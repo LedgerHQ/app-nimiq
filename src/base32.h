@@ -1,6 +1,6 @@
 /*******************************************************************************
- *   Ledger Stellar App
- *   (c) 2017 Ledger
+ *   Ledger Nimiq App
+ *   (c) 2018 Ledger
  *
  *  adapted from https://stash.forgerock.org/projects/OPENAM/repos/forgerock-authenticator-ios/browse/ForgeRock-Authenticator/base32.h
  *

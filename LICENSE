@@ -202,9 +202,10 @@
 
 ========================================================================================================================
 
-Ledger Stellar App includes code with separate copyright notices
-and license terms. Your use of the code for the these sub-components is subject
-to the terms and conditions of the following licenses.
+Ledger Nimiq App is derived from the Ledger Stellar App and also
+includes code with separate copyright notices and license terms. Your use
+of the code for the these sub-components is subject to the terms and
+conditions of the following licenses.
 
 ------------------------------------------------------------------------------------------------------------------------
 src/base32.h
