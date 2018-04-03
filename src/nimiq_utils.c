@@ -22,6 +22,8 @@
 #include "blake2b.h"
 #include "base32.h"
 
+#define MAX_SAFE_INTEGER 9007199254740991
+
 static const char * captions[][5] = {
     {"Basic Tx", NULL, NULL, NULL, NULL},
     {"Extended Tx", "Data", "Sender", "Sender Type", "Recipient Type"} // For future use, not yet supported
@@ -41,21 +43,21 @@ void iban_check(char in[36], char *check) {
 
     // Convert the address to a number-only string
     for (unsigned int i = 0; i < 36; i++) {
-        if (70 >= counter) {
-            // XXX buffer overflow, signal error
+        if (70 <= counter) {
+            THROW(0x6700); // buffer overflow, signal error
         }
-        if (in[i] >= 48 && in[i] <= 57) {
+        if (48 <= in[i] && 57 >= in[i]) {
             total_number[counter++] = in[i];
-        } else if (in[i] >= 65 && in[i] <= 90) {
+        } else if (65 <= in[i] && 90 >= in[i]) {
             snprintf(&total_number[counter++], 3, "%d", in[i] - 55);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
-        } else if (in[i] >= 97 && in[i] <= 122) {
+        } else if (97 <= in[i] && 122 >= in[i]) {
             snprintf(&total_number[counter++], 3, "%d", in[i] - 87);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
         } else {
-            // XXX unknown ascii code, signal error
+            THROW(0x6a80); // invalid ascii code, signal error
         }
     }
 
@@ -63,7 +65,6 @@ void iban_check(char in[36], char *check) {
     counter = 0;
     for (unsigned int i = 0; i < 9; i++) {
         strncpy(&partial_number[offset], &total_number[counter], 9 - offset);
-        // strncpy(check, partial_number, 10);
         counter += 9 - offset;
         for (unsigned int j = 0; j < 9; j++) {
             if (partial_number[j] != '\0') {
@@ -123,8 +124,11 @@ void print_amount(uint64_t amount, char *asset, char *out) {
     uint64_t dVal = amount;
     int i, j;
 
+    // If the amount can't be represented safely in JavaScript, signal an error
+    if (MAX_SAFE_INTEGER < amount) THROW(0x6a80);
+
     memset(buffer, 0, AMOUNT_MAX_SIZE);
-    for (i = 0; dVal > 0 || i < 9; i++) {
+    for (i = 0; dVal > 0 || i < 7; i++) {
         if (dVal > 0) {
             buffer[i] = (dVal % 10) + '0';
             dVal /= 10;
@@ -228,26 +232,42 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
     uint16_t data_length = readUInt16Block(buffer);
     buffer += 2;
     if (0 != data_length) THROW(0x6a80);
-    buffer += 20; // Ignore our own address
+
+    buffer += 20; // For Basic Tx, ignore our own address
+
     uint8_t sender_type = buffer[0];
     buffer++;
     if (0 != sender_type) THROW(0x6a80);
+
     print_address(buffer, txContent->recipient);
+    PRINTF("recipient: %s\n", txContent->recipient);
     buffer += 20;
+
     uint8_t recipient_type = buffer[0];
     buffer++;
     if (0 != recipient_type) THROW(0x6a80);
+
     uint64_t value = readUInt64Block(buffer);
+    PRINTF("value: %lu\n", value);
     print_amount(value, "NIM", txContent->value);
+    PRINTF("amount: %s\n", txContent->value);
     buffer += 8;
+
     uint64_t fee = readUInt64Block(buffer);
+    PRINTF("fee: %lu\n", fee);
     print_amount(fee, "NIM", txContent->fee);
+    PRINTF("fee amount: %s\n", txContent->fee);
     buffer += 8;
+
     uint32_t validity_start = readUInt32Block(buffer);
+    PRINTF("validity start: %u\n", validity_start);
     print_int(validity_start, txContent->validity_start);
+    PRINTF("validity start string: %s\n", txContent->validity_start);
     buffer += 4;
+
     print_network_id(buffer, txContent->network);
     buffer++;
+
     uint8_t flags = buffer[0];
     buffer++;
     if (0 != flags) THROW(0x6a80);

@@ -1,14 +1,13 @@
-# Stellar application : Common Technical Specifications
+# Nimiq application : Common Technical Specifications
 
 ## About
 
-This document describes the APDU messages interface to communicate with the Stellar application.
+This document describes the APDU messages interface to communicate with the Nimiq application.
 
 The application covers the following functionalities on ed25519:
 
-  - Retrieve a public Stellar address given a BIP 32 path
-  - Sign a single Stellar payment transaction given a BIP 32 path and a stellar transaction xdr
-  - Sign a any Stellar transaction given a BIP 32 path and a transaction hash
+  - Retrieve a public Nimiq address given a BIP 32 path
+  - Sign a single Nimiq basic transaction given a BIP 32 path and the transaction serialized content
 
 The application interface can be accessed over HID or BLE
 
@@ -19,7 +18,7 @@ The application interface can be accessed over HID or BLE
 #### Description
 
 This command returns the public key for the given BIP 32 path. An optional message can be sent to sign to verify
-the validity of the generated keypair.
+the validity of the generated keypair. Optionally, the address can also be showed to the user for confirmation.
 
 #### Coding
 
@@ -27,8 +26,8 @@ the validity of the generated keypair.
 
 | *CLA* | *INS*  | *P1*               | *P2*       | *Lc*     | *Le* |  
 |-------|--------|--------------------|------------|----------|------|
-|   E0  |   02   |  00 : don't return signature | 00 : don't return the chain code | | |
-|       |        |  01 : return signature | 01 : return the chain code | | |
+|   E0  |   02   |  00 : don't return signature | 00 : don't ask for confirmation | | |
+|       |        |  01 : return signature | 01 : ask for confirmation | | |
 
 **Input data**
 
@@ -46,13 +45,13 @@ the validity of the generated keypair.
 |-----------------------------------------------------------------------------------|----------|
 | Public Key                                                                        | 32       |
 | Signature if requested                                                            | 64       |
-| Chain code if requested                                                           | 32       |
 
-### Sign Single Operation Transaction
+
+### Sign Basic Transaction
 
 #### Description
 
-This command signs a Stellar any transaction containing a single operation and lets users validate the operation details
+This command signs a Nimiq basic transaction and lets users validate the operation details
 
 #### Coding
 
@@ -86,7 +85,7 @@ This command signs a Stellar any transaction containing a single operation and l
 
 | *Description*                                                                     | *Length* |
 |-----------------------------------------------------------------------------------|----------|
-| EDDSA encoded signature (ed25519)                                                 | variable |
+| EDDSA encoded signature (ed25519)                                                 | 64       |
 
 
 ### Get app configuration
