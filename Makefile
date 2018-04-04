@@ -1,6 +1,6 @@
 #*******************************************************************************
-#   Ledger Stellar App
-#   (c) 2017 Ledger
+#   Ledger Nimiq App
+#   (c) 2018 Ledger
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ $(error Environment variable BOLOS_SDK is not set)
 endif
 include $(BOLOS_SDK)/Makefile.defines
 
-APPNAME = Stellar
-APP_LOAD_PARAMS=--appFlags 0x40 --path "44'/148'" --curve ed25519 $(COMMON_LOAD_PARAMS)
+APPNAME = Nimiq
+APP_LOAD_PARAMS=--appFlags 0x40 --path "44'/242'" --curve ed25519 $(COMMON_LOAD_PARAMS)
 
-APPVERSION_M=2
-APPVERSION_N=0
-APPVERSION_P=2
+APPVERSION_M=0
+APPVERSION_N=1
+APPVERSION_P=1
 APPVERSION=$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)
 
 #prepare hsm generation
@@ -62,9 +62,9 @@ DEFINES   += APPVERSION=\"$(APPVERSION)\"
 ##############
 #  Compiler  #
 ##############
-#GCCPATH   := $(BOLOS_ENV)/gcc-arm-none-eabi-5_3-2016q1/bin/
+GCCPATH   := $(BOLOS_ENV)/gcc-arm-none-eabi-5_3-2016q1/bin/
 #CLANGPATH := $(BOLOS_ENV)/clang-arm-fropi/bin/
-CC       := $(CLANGPATH)clang 
+CC       := $(CLANGPATH)clang-4.0
 
 #CFLAGS   += -O0
 CFLAGS   += -O3 -Os
@@ -79,7 +79,7 @@ LDLIBS   += -lm -lgcc -lc
 include $(BOLOS_SDK)/Makefile.glyphs
 
 ### computed variables
-APP_SOURCE_PATH  += src  
+APP_SOURCE_PATH  += src
 SDK_SOURCE_PATH  += lib_stusb
 
 

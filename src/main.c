@@ -1,6 +1,6 @@
 /*******************************************************************************
-*   Ledger Stellar App
-*   (c) 2017 Ledger
+*   Ledger Nimiq App
+*   (c) 2018 Ledger
 *
 *  Licensed under the Apache License, Version 2.0 (the "License");
 *  you may not use this file except in compliance with the License.
@@ -25,9 +25,7 @@
 
 #include "glyphs.h"
 
-#include "base32.h"
-#include "xdr_parser.h"
-#include "stlr_utils.h"
+#include "nimiq_utils.h"
 
 #ifdef HAVE_U2F
 
@@ -67,13 +65,14 @@ uint32_t set_result_get_publicKey(void);
 #define OFFSET_LC 4
 #define OFFSET_CDATA 5
 
-#define MAX_UI_STEPS 10
+#define MAX_UI_STEPS 11
 
-#define MAX_RAW_TX 1024
+#define BASIC_TX_SIZE 66
+#define MAX_RAW_TX 66
 
 typedef struct publicKeyContext_t {
     cx_ecfp_public_key_t publicKey;
-    char address[57];
+    char address[45];
     uint8_t signature[64];
     bool returnSignature;
 } publicKeyContext_t;
@@ -83,7 +82,6 @@ typedef struct transactionContext_t {
     uint32_t bip32Path[MAX_BIP32_PATH];
     uint8_t rawTx[MAX_RAW_TX];
     uint32_t rawTxLength;
-    uint8_t txHash[32];
 } transactionContext_t;
 
 publicKeyContext_t pkCtx;
@@ -97,7 +95,6 @@ volatile char details1Caption[18];
 volatile char details2Caption[18];
 volatile char details3Caption[18];
 volatile char details4Caption[18];
-volatile char details5Caption[18];
 #elif defined(TARGET_BLUE)
 volatile char displayString[33];
 volatile char subtitleCaption[16];
@@ -153,11 +150,11 @@ const bagl_element_t *ui_menu_item_out_over(const bagl_element_t *e) {
 
 #define BAGL_FONT_OPEN_SANS_LIGHT_16_22PX_AVG_WIDTH 10
 #define BAGL_FONT_OPEN_SANS_REGULAR_10_13PX_AVG_WIDTH 8
-#define MAX_CHAR_PER_LINE 28
+#define MAX_CHAR_PER_LINE 30
 
 #define COLOR_BG_1 0xF9F9F9
-#define COLOR_APP 0x27a2db
-#define COLOR_APP_LIGHT 0x93d1ed
+#define COLOR_APP 0xF6AE2D
+#define COLOR_APP_LIGHT 0x93D1ED
 
 const bagl_element_t ui_idle_blue[] = {
     // type                               userid    x    y   w    h  str rad
@@ -184,7 +181,7 @@ const bagl_element_t ui_idle_blue[] = {
     /// TOP STATUS BAR
     {{BAGL_LABELINE, 0x00, 0, 45, 320, 30, 0, 0, BAGL_FILL, 0xFFFFFF, COLOR_APP,
       BAGL_FONT_OPEN_SANS_SEMIBOLD_10_13PX | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     "STELLAR",
+     "NIMIQ",
      0,
      0,
      0,
@@ -217,9 +214,9 @@ const bagl_element_t ui_idle_blue[] = {
      NULL,
      NULL},
 
-    // BADGE_RIPPLE.GIF
+    // badge_nimiq.gif
     {{BAGL_ICON, 0x00, 135, 178, 50, 50, 0, 0, BAGL_FILL, 0, COLOR_BG_1, 0, 0},
-     &C_badge_stellar,
+     &C_badge_nimiq,
      0,
      0,
      0,
@@ -230,7 +227,7 @@ const bagl_element_t ui_idle_blue[] = {
     {{BAGL_LABELINE, 0x00, 0, 270, 320, 30, 0, 0, BAGL_FILL, 0x000000,
       COLOR_BG_1,
       BAGL_FONT_OPEN_SANS_LIGHT_16_22PX | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     "Open Stellar wallet",
+     "Open Nimiq wallet",
      0,
      0,
      0,
@@ -315,7 +312,7 @@ const ux_menu_entry_t menu_about[] = {
     };
 
 const ux_menu_entry_t menu_main[] = {
-    {NULL, NULL, 0, &C_icon_stellar, "Use wallet to", "view accounts", 33, 12},
+    {NULL, NULL, 0, &C_icon_nimiq, "Use wallet to", "view accounts", 33, 12},
     {menu_settings, NULL, 0, NULL, "Settings", NULL, 0, 0},
     {menu_about, NULL, 0, NULL, "About", NULL, 0, 0},
     {NULL, os_sched_exit, 0, &C_icon_dashboard, "Quit app", NULL, 50, 29},
@@ -467,7 +464,7 @@ unsigned int ui_settings_blue_button(unsigned int button_mask, unsigned int butt
     return 0;
 }
 
-#endif // #if defined(TARGET_NANOS)
+#endif // #if defined(TARGET_BLUE)
 
 #if defined(TARGET_BLUE)
 const bagl_element_t ui_address_blue[] = {
@@ -830,22 +827,8 @@ const bagl_element_t * ui_approval_blue_cancel_callback(const bagl_element_t *e)
 const char *ui_approval_blue_values[7];
 
 const char *const ui_approval_blue_details_name[][7] = {
-    { "START BALANCE", "ACCOUNT ID", NULL, NULL, NULL, "FEE", "MEMO" },
-    { "AMOUNT", "DESTINATION", NULL, NULL, NULL, "FEE", "MEMO" },
-    { "SEND", "RECEIVE", "DESTINATION", "PATH", NULL, "FEE", "MEMO" },
-    { "BUY", "PRICE", "SELL", NULL, NULL, "FEE", "MEMO"},
-    { "BUY", "PRICE", "OFFER ID", NULL, NULL, "FEE", "MEMO"},
-    { "BUY", "PRICE", "SELL", NULL, NULL, "FEE", "MEMO"},
-    { "BUY", "PRICE", "SELL", NULL, NULL, "FEE", "MEMO"},
-    { "INFL DEST", "FLAGS", "THRESHOLDS", "HOME DOMAIN", "SIGNER", "FEE", "MEMO"},
-    { "ASSET", "ISSUER", "LIMIT", NULL, NULL, "FEE", "MEMO"},
-    { "ASSET", "ISSUER", NULL, NULL, NULL, "FEE", "MEMO"},
-    { "ACCOUNT ID", "ASSET", NULL, NULL, NULL, "FEE", "MEMO"},
-    { "ACCOUNT ID", "ASSET", NULL, NULL, NULL, "FEE", "MEMO"},
-    { "DESTINATION", NULL, NULL, NULL, NULL, "FEE", "MEMO"},
-    {  NULL, NULL, NULL, NULL, NULL, "FEE", "MEMO"},
-    { "NAME", "VALUE", NULL, NULL, NULL, "FEE", "MEMO"}
-
+    { "FEE", "VALIDITY START", NULL, NULL, NULL, "RECIPIENT", "AMOUNT" },
+    { "FEE", "VALIDITY START", "SENDER", "DATA", "RECIPIENT", "AMOUNT", NULL }
 };
 
 const bagl_element_t *ui_approval_common_show_details(unsigned int detailidx) {
@@ -860,31 +843,31 @@ const bagl_element_t *ui_approval_common_show_details(unsigned int detailidx) {
     return NULL;
 }
 
-const bagl_element_t *ui_approval_blue_1_details(const bagl_element_t *e) {
+const bagl_element_t *ui_approval_blue_fee_details(const bagl_element_t *e) {
     return ui_approval_common_show_details(0);
 }
 
-const bagl_element_t *ui_approval_blue_2_details(const bagl_element_t *e) {
+const bagl_element_t *ui_approval_blue_validity_details(const bagl_element_t *e) {
     return ui_approval_common_show_details(1);
 }
 
-const bagl_element_t *ui_approval_blue_3_details(const bagl_element_t *e) {
+const bagl_element_t *ui_approval_blue_1_details(const bagl_element_t *e) {
     return ui_approval_common_show_details(2);
 }
 
-const bagl_element_t *ui_approval_blue_4_details(const bagl_element_t *e) {
+const bagl_element_t *ui_approval_blue_2_details(const bagl_element_t *e) {
     return ui_approval_common_show_details(3);
 }
 
-const bagl_element_t *ui_approval_blue_5_details(const bagl_element_t *e) {
+const bagl_element_t *ui_approval_blue_3_details(const bagl_element_t *e) {
     return ui_approval_common_show_details(4);
 }
 
-const bagl_element_t *ui_approval_blue_fee_details(const bagl_element_t *e) {
+const bagl_element_t *ui_approval_blue_recipient_details(const bagl_element_t *e) {
     return ui_approval_common_show_details(5);
 }
 
-const bagl_element_t *ui_approval_blue_memo_details(const bagl_element_t *e) {
+const bagl_element_t *ui_approval_blue_amount_details(const bagl_element_t *e) {
     return ui_approval_common_show_details(6);
 }
 
@@ -910,7 +893,7 @@ const bagl_element_t ui_approval_blue[] = {
 
     /// TOP STATUS BAR
     {{BAGL_LABELINE, 0x60, 0, 45, 320, 30, 0, 0, BAGL_FILL, 0xFFFFFF, COLOR_APP, BAGL_FONT_OPEN_SANS_SEMIBOLD_10_13PX | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     "CONFIRM TRANSACTION",
+     "CONFIRM OPERATION",
      0,
      0,
      0,
@@ -946,7 +929,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL,
      NULL},
 
-    // Fee
+    // Recipient
     {{BAGL_LABELINE, 0x75, 30, 179, 120, 20, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_SEMIBOLD_8_11PX, 0},
      NULL,
      0,
@@ -957,7 +940,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL},
     // x-18 when ...
     {{BAGL_LABELINE, 0x15, 130, 179, 160, 20, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_REGULAR_10_13PX | BAGL_FONT_ALIGNMENT_RIGHT, 0},
-     txContent.fee,
+     0,
      0,
      0,
      0,
@@ -977,7 +960,7 @@ const bagl_element_t ui_approval_blue[] = {
      0,
      0xEEEEEE,
      0x000000,
-     ui_approval_blue_fee_details,
+     ui_approval_blue_recipient_details,
      ui_menu_item_out_over,
      ui_menu_item_out_over},
     {{BAGL_RECTANGLE, 0x25, 0, 158, 5, 34, 0, 0, BAGL_FILL, COLOR_BG_1, COLOR_BG_1, 0, 0},
@@ -998,7 +981,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL,
      NULL},
 
-    // Memo
+    // Amount
     {{BAGL_LABELINE, 0x76, 30, 214, 100, 23, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_SEMIBOLD_8_11PX, 0},
      NULL,
      0,
@@ -1029,7 +1012,7 @@ const bagl_element_t ui_approval_blue[] = {
      0,
      0xEEEEEE,
      0x000000,
-     ui_approval_blue_memo_details,
+     ui_approval_blue_amount_details,
      ui_menu_item_out_over,
      ui_menu_item_out_over},
     {{BAGL_RECTANGLE, 0x26, 0, 193, 5, 34, 0, 0, BAGL_FILL, COLOR_BG_1, COLOR_BG_1, 0, 0},
@@ -1050,7 +1033,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL,
      NULL},
 
-    // Details 1
+    // Fee
     {{BAGL_LABELINE, 0x70, 30, 249, 120, 20, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_SEMIBOLD_8_11PX, 0},
      NULL,
      0,
@@ -1081,7 +1064,7 @@ const bagl_element_t ui_approval_blue[] = {
      0,
      0xEEEEEE,
      0x000000,
-     ui_approval_blue_1_details,
+     ui_approval_blue_fee_details,
      ui_menu_item_out_over,
      ui_menu_item_out_over},
     {{BAGL_RECTANGLE, 0x20, 0, 228, 5, 34, 0, 0, BAGL_FILL, COLOR_BG_1, COLOR_BG_1, 0, 0},
@@ -1102,7 +1085,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL,
      NULL},
 
-    // Details 2
+    // Validity Start
     {{BAGL_LABELINE, 0x71, 30, 284, 100, 23, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_SEMIBOLD_8_11PX, 0},
      NULL,
      0,
@@ -1133,7 +1116,7 @@ const bagl_element_t ui_approval_blue[] = {
      0,
      0xEEEEEE,
      0x000000,
-     ui_approval_blue_2_details,
+     ui_approval_blue_validity_details,
      ui_menu_item_out_over,
      ui_menu_item_out_over},
     {{BAGL_RECTANGLE, 0x21, 0, 263, 5, 34, 0, 0, BAGL_FILL, COLOR_BG_1, COLOR_BG_1, 0, 0},
@@ -1154,6 +1137,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL,
      NULL},
 
+    // Details 1
     {{BAGL_LABELINE, 0x72, 30, 319, 100, 23, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_SEMIBOLD_8_11PX, 0},
      NULL,
      0,
@@ -1184,7 +1168,7 @@ const bagl_element_t ui_approval_blue[] = {
      0,
      0xEEEEEE,
      0x000000,
-     ui_approval_blue_3_details,
+     ui_approval_blue_1_details,
      ui_menu_item_out_over,
      ui_menu_item_out_over},
     {{BAGL_RECTANGLE, 0x22, 0, 298, 5, 34, 0, 0, BAGL_FILL, COLOR_BG_1, COLOR_BG_1, 0, 0},
@@ -1205,6 +1189,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL,
      NULL},
 
+    // Details 2
     {{BAGL_LABELINE, 0x73, 30, 354, 100, 23, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_SEMIBOLD_8_11PX, 0},
      NULL,
      0,
@@ -1235,7 +1220,7 @@ const bagl_element_t ui_approval_blue[] = {
      0,
      0xEEEEEE,
      0x000000,
-     ui_approval_blue_4_details,
+     ui_approval_blue_2_details,
      ui_menu_item_out_over,
      ui_menu_item_out_over},
     {{BAGL_RECTANGLE, 0x23, 0, 333, 5, 34, 0, 0, BAGL_FILL, COLOR_BG_1, COLOR_BG_1, 0, 0},
@@ -1256,7 +1241,7 @@ const bagl_element_t ui_approval_blue[] = {
      NULL,
      NULL},
 
-    // Details 5
+    // Details 3
     {{BAGL_LABELINE, 0x74, 30, 389, 100, 23, 0, 0, BAGL_FILL, 0x000000, COLOR_BG_1, BAGL_FONT_OPEN_SANS_SEMIBOLD_8_11PX, 0},
      NULL,
      0,
@@ -1287,7 +1272,7 @@ const bagl_element_t ui_approval_blue[] = {
      0,
      0xEEEEEE,
      0x000000,
-     ui_approval_blue_5_details,
+     ui_approval_blue_3_details,
      ui_menu_item_out_over,
      ui_menu_item_out_over},
     {{BAGL_RECTANGLE, 0x24, 0, 368, 5, 34, 0, 0, BAGL_FILL, COLOR_BG_1, COLOR_BG_1, 0, 0},
@@ -1400,15 +1385,15 @@ void ui_approve_tx_blue_init(void) {
     ui_approval_blue_ok = (bagl_element_callback_t)io_seproxyhal_touch_tx_ok;
     ui_approval_blue_cancel = (bagl_element_callback_t)io_seproxyhal_touch_tx_cancel;
     os_memset(ui_approval_blue_values, 0, sizeof(ui_approval_blue_values));
-    ui_approval_blue_values[0] = txContent.details1;
-    ui_approval_blue_values[1] = txContent.details2;
-    ui_approval_blue_values[2] = txContent.details3;
-    ui_approval_blue_values[3] = txContent.details4;
-    ui_approval_blue_values[4] = txContent.details5;
-    ui_approval_blue_values[5] = txContent.fee;
-    ui_approval_blue_values[6] = txContent.memo;
-    strcpy(subtitleCaption, txContent.networkId);
-    strcpy(subtitleCaption + strlen(txContent.networkId), " Network");
+    ui_approval_blue_values[0] = txContent.fee;
+    ui_approval_blue_values[1] = txContent.validity_start;
+    ui_approval_blue_values[2] = txContent.details1;
+    ui_approval_blue_values[3] = txContent.details2;
+    ui_approval_blue_values[4] = txContent.details3;
+    ui_approval_blue_values[5] = txContent.recipient;
+    ui_approval_blue_values[6] = txContent.value;
+    strcpy(subtitleCaption, txContent.network);
+    strcpy(subtitleCaption + strlen(txContent.network), " Network");
     ui_approval_blue_init();
 }
 
@@ -1417,22 +1402,8 @@ void ui_approve_tx_blue_init(void) {
 #if defined(TARGET_NANOS)
 // component id steps for different types of operations
 const uint8_t ui_elements_map[][MAX_UI_STEPS] = {
-  { 0x01, 0x02, 0x03, 0x04, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00 }, // create account
-  { 0x01, 0x02, 0x03, 0x04, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00 }, // payment
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x09, 0x10, 0x00 }, // path payment
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0x10, 0x00, 0x00 }, // create offer
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0x10, 0x00, 0x00 }, // delete offer
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0x10, 0x00, 0x00 }, // change offer
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0x10, 0x00, 0x00 }, // passive offer
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10 }, // set options
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0x10, 0x00, 0x00 }, // change trust
-  { 0x01, 0x02, 0x03, 0x04, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00 }, // remove trust
-  { 0x01, 0x02, 0x03, 0x04, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00 }, // allow trust
-  { 0x01, 0x02, 0x03, 0x04, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00 }, // revoke trust
-  { 0x01, 0x02, 0x03, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00, 0x00 }, // account merge
-  { 0x01, 0x02, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00 }, // inflation
-  { 0x01, 0x02, 0x03, 0x04, 0x08, 0x09, 0x10, 0x00, 0x00, 0x00 }, // manage data
-  { 0x01, 0x03, 0x02, 0x20, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00 }  // unknown
+  { 0x01, 0x02, 0x04, 0x05, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, // basic tx
+  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11 }  // for future use in extended tx, not yet supported
 };
 
 unsigned int ui_tx_approval_prepro(const bagl_element_t *element) {
@@ -1502,7 +1473,7 @@ const bagl_element_t ui_approve_tx_nanos[] = {
      NULL},
     {{BAGL_LABELINE, 0x01, 0, 26, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     "transaction",
+     "operation",
      0,
      0,
      0,
@@ -1531,7 +1502,7 @@ const bagl_element_t ui_approve_tx_nanos[] = {
 
     {{BAGL_LABELINE, 0x03, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     (char*) details1Caption,
+     "Recipient",
      0,
      0,
      0,
@@ -1540,7 +1511,7 @@ const bagl_element_t ui_approve_tx_nanos[] = {
      NULL},
     {{BAGL_LABELINE, 0x03, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
-     (char*) txContent.details1,
+     txContent.recipient,
      0,
      0,
      0,
@@ -1550,7 +1521,7 @@ const bagl_element_t ui_approve_tx_nanos[] = {
 
     {{BAGL_LABELINE, 0x04, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     (char *) details2Caption,
+     "Amount",
      0,
      0,
      0,
@@ -1559,7 +1530,7 @@ const bagl_element_t ui_approve_tx_nanos[] = {
      NULL},
     {{BAGL_LABELINE, 0x04, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
-     txContent.details2,
+     txContent.value,
      0,
      0,
      0,
@@ -1569,82 +1540,6 @@ const bagl_element_t ui_approve_tx_nanos[] = {
 
     {{BAGL_LABELINE, 0x05, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     (char*) details3Caption,
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-    {{BAGL_LABELINE, 0x05, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
-     txContent.details3,
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-
-    {{BAGL_LABELINE, 0x06, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     (char *) details4Caption,
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-    {{BAGL_LABELINE, 0x06, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
-     txContent.details4,
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-
-    {{BAGL_LABELINE, 0x07, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     (char*) details5Caption,
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-    {{BAGL_LABELINE, 0x07, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
-     txContent.details5,
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-
-    {{BAGL_LABELINE, 0x08, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
-     "Memo",
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-    {{BAGL_LABELINE, 0x08, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
-     (char *)txContent.memo,
-     0,
-     0,
-     0,
-     NULL,
-     NULL,
-     NULL},
-
-    {{BAGL_LABELINE, 0x09, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
-      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
      "Fee",
      0,
      0,
@@ -1652,7 +1547,7 @@ const bagl_element_t ui_approve_tx_nanos[] = {
      NULL,
      NULL,
      NULL},
-    {{BAGL_LABELINE, 0x09, 23, 26, 82, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
+    {{BAGL_LABELINE, 0x05, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
      txContent.fee,
      0,
@@ -1662,7 +1557,26 @@ const bagl_element_t ui_approve_tx_nanos[] = {
      NULL,
      NULL},
 
-    {{BAGL_LABELINE, 0x10, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
+    {{BAGL_LABELINE, 0x06, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
+     "Validity Start",
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+    {{BAGL_LABELINE, 0x06, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
+     txContent.validity_start,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+
+    {{BAGL_LABELINE, 0x07, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
      "Network",
      0,
@@ -1671,9 +1585,85 @@ const bagl_element_t ui_approve_tx_nanos[] = {
      NULL,
      NULL,
      NULL},
+    {{BAGL_LABELINE, 0x07, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
+     txContent.network,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+
+    {{BAGL_LABELINE, 0x08, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
+     (char*) details1Caption,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+    {{BAGL_LABELINE, 0x08, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
+     txContent.details1,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+
+    {{BAGL_LABELINE, 0x09, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
+     (char*) details2Caption,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+    {{BAGL_LABELINE, 0x09, 23, 26, 82, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
+     txContent.details2,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+
+    {{BAGL_LABELINE, 0x10, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
+     (char*) details3Caption,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
     {{BAGL_LABELINE, 0x10, 23, 26, 82, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
-     txContent.networkId,
+     txContent.details3,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+
+    {{BAGL_LABELINE, 0x11, 0, 12, 128, 32, 0, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_REGULAR_11px | BAGL_FONT_ALIGNMENT_CENTER, 0},
+     (char*) details4Caption,
+     0,
+     0,
+     0,
+     NULL,
+     NULL,
+     NULL},
+    {{BAGL_LABELINE, 0x1, 23, 26, 82, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
+      BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
+     txContent.details4,
      0,
      0,
      0,
@@ -1793,10 +1783,10 @@ unsigned int io_seproxyhal_touch_tx_ok(const bagl_element_t *e) {
 
     // sign hash
 #if CX_APILEVEL >= 8
-    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, txCtx.txHash, 32, NULL, 0, G_io_apdu_buffer, NULL);
-#else    
-    tx = cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, txCtx.txHash, 32, G_io_apdu_buffer);
-#endif    
+    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, txCtx.rawTx, BASIC_TX_SIZE, NULL, 0, G_io_apdu_buffer, NULL);
+#else
+    tx = cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, txCtx.rawTx, BASIC_TX_SIZE, G_io_apdu_buffer);
+#endif
     os_memset(&privateKey, 0, sizeof(privateKey));
 
     G_io_apdu_buffer[tx++] = 0x90;
@@ -1966,9 +1956,9 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
     if (pkCtx.returnSignature) {
 #if CX_APILEVEL >= 8
         cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, msg, msgLength, NULL, 0, pkCtx.signature, NULL);
-#else        
+#else
         cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, msg, msgLength, pkCtx.signature);
-#endif        
+#endif
     }
     os_memset(&privateKey, 0, sizeof(privateKey));
 
@@ -2039,7 +2029,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     }
 
     os_memset(&txContent, 0, sizeof(txContent));
-    parseTxXdr(txCtx.rawTx, &txContent);
+    parseTx(txCtx.rawTx, &txContent);
 
     // prepare for display
     os_memset((char *)operationCaption, 0, sizeof(operationCaption));
@@ -2048,18 +2038,13 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
 #if defined(TARGET_NANOS)
     os_memset((char *)details1Caption, 0, sizeof(details1Caption));
     os_memset((char *)details2Caption, 0, sizeof(details2Caption));
-    os_memset((char *)details4Caption, 0, sizeof(details4Caption));
     os_memset((char *)details3Caption, 0, sizeof(details3Caption));
-    os_memset((char *)details5Caption, 0, sizeof(details5Caption));
+    os_memset((char *)details4Caption, 0, sizeof(details4Caption));
     print_caption(txContent.operationType, CAPTION_TYPE_DETAILS1, (char *)details1Caption);
     print_caption(txContent.operationType, CAPTION_TYPE_DETAILS2, (char *)details2Caption);
     print_caption(txContent.operationType, CAPTION_TYPE_DETAILS3, (char *)details3Caption);
     print_caption(txContent.operationType, CAPTION_TYPE_DETAILS4, (char *)details4Caption);
-    print_caption(txContent.operationType, CAPTION_TYPE_DETAILS5, (char *)details5Caption);
 #endif // #if TARGET
-
-    // hash transaction
-    cx_hash_sha256(txCtx.rawTx, txCtx.rawTxLength, txCtx.txHash);
 
 #if defined(TARGET_BLUE)
     ux_step_count = 0;
@@ -2071,11 +2056,6 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
 #endif // #if TARGET
 
     *flags |= IO_ASYNCH_REPLY;
-}
-
-void handleSignTxHash(uint8_t *dataBuffer, uint16_t dataLength, volatile unsigned int *flags, volatile unsigned int *tx) {
-    // no longer supported
-    THROW(0x6c66);
 }
 
 void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
