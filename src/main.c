@@ -2063,6 +2063,9 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
 
     BEGIN_TRY {
         TRY {
+            if (!os_global_pin_is_validated()) {
+                THROW(0x6982);
+            }
             if (G_io_apdu_buffer[OFFSET_CLA] != CLA) {
                 THROW(0x6E00);
             }
