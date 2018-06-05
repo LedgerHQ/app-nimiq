@@ -192,7 +192,7 @@ void print_int(uint32_t id, char *out) {
 }
 
 void print_network_id(uint8_t *in, char *out) {
-    if (0 == in[0]) {
+    if (42 == in[0]) {
         strcpy(out, "Main");
     } else if (1 == in[0]) {
         strcpy(out, "Test");
