@@ -63,7 +63,7 @@ void iban_check(char in[36], char *check) {
 
     // Compute modulo-97 on the resulting number (do it in 32-bit pieces)
     counter = 0;
-    for (unsigned int i = 0; i < 9; i++) {
+    for (unsigned int i = 0; i < 10; i++) {
         strncpy(&partial_number[offset], &total_number[counter], 9 - offset);
         counter += 9 - offset;
         for (unsigned int j = 0; j < 9; j++) {
