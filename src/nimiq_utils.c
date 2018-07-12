@@ -14,9 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  ********************************************************************************/
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <stdio.h>
 
 #include "nimiq_utils.h"
 #include "blake2b.h"
@@ -26,6 +26,7 @@
 
 static const char * captions[][5] = {
     {"Basic Tx", NULL, NULL, NULL, NULL},
+    {"Tx with Data", "Data", NULL, NULL, NULL},
     {"Extended Tx", "Data", "Sender", "Sender Type", "Recipient Type"} // For future use, not yet supported
 };
 
@@ -208,6 +209,22 @@ void print_network_id(uint8_t *in, char *out) {
     }
 }
 
+void print_extra_data(uint8_t *in, char *out, uint16_t data_size) {
+    // Make sure that the string is always null-terminated
+    out[MAX_DATA_LENGTH] = '\0';
+
+    // Check if there is any non-printable ASCII characters
+    for (uint16_t i = 0; i < data_size; i++) {
+        if ((32 > in[i]) || (126 < in[i])) {
+            strcpy(out, "Binary data");
+            return;
+        }
+    }
+
+    // If there is not, copy the string to be displayed
+    strncpy(out, (char *) in, data_size);
+}
+
 void print_caption(uint8_t operationType, uint8_t captionType, char *out) {
     char *in = ((char*) PIC(captions[operationType][captionType]));
     if (in) {
@@ -216,7 +233,7 @@ void print_caption(uint8_t operationType, uint8_t captionType, char *out) {
 }
 
 uint16_t readUInt16Block(uint8_t *buffer) {
-    return buffer[0] + (buffer[1] << 8);
+    return buffer[1] + (buffer[0] << 8);
 }
 
 uint32_t readUInt32Block(uint8_t *buffer) {
@@ -231,47 +248,69 @@ uint64_t readUInt64Block(uint8_t *buffer) {
 }
 
 void parseTx(uint8_t *buffer, txContent_t *txContent) {
-    txContent->operationType = OPERATION_TYPE_BASIC_TX;
+    // Process the data length field
     uint16_t data_length = readUInt16Block(buffer);
+    PRINTF("data length: %u\n", data_length);
     buffer += 2;
-    if (0 != data_length) THROW(0x6a80);
 
-    buffer += 20; // For Basic Tx, ignore our own address
+    // Process the extra data field
+    if (0 == data_length) {
+        txContent->operationType = OPERATION_TYPE_BASIC_TX;
+    } else if (MAX_DATA_LENGTH >= data_length) {
+        txContent->operationType = OPERATION_TYPE_EXTRA_DATA_TX;
 
+        print_extra_data(buffer, txContent->details1, data_length);
+        PRINTF("data: %s\n", txContent->details1);
+        buffer += data_length;
+    } else {
+        THROW(0x6a80);
+    }
+
+    // Process the sender field
+    buffer += 20; // Ignore our own address for Basic Tx (even with data)
+
+    // Process the sender account type field
     uint8_t sender_type = buffer[0];
     buffer++;
-    if (0 != sender_type) THROW(0x6a80);
+    if (0 != sender_type) THROW(0x6a80); // We only support basic accounts
 
+    // Proccess the recipient field
     print_address(buffer, txContent->recipient);
     PRINTF("recipient: %s\n", txContent->recipient);
     buffer += 20;
 
+    // Proccess the recipient account type field
     uint8_t recipient_type = buffer[0];
     buffer++;
-    if (0 != recipient_type) THROW(0x6a80);
+    if (0 != recipient_type) THROW(0x6a80); // We only support basic accounts
 
+    // Proccess the value field
     uint64_t value = readUInt64Block(buffer);
     PRINTF("value: %lu\n", value);
     print_amount(value, "NIM", txContent->value);
     PRINTF("amount: %s\n", txContent->value);
     buffer += 8;
 
+    // Proccess the fee field
     uint64_t fee = readUInt64Block(buffer);
     PRINTF("fee: %lu\n", fee);
     print_amount(fee, "NIM", txContent->fee);
     PRINTF("fee amount: %s\n", txContent->fee);
     buffer += 8;
 
+    // Proccess the validity start field
     uint32_t validity_start = readUInt32Block(buffer);
     PRINTF("validity start: %u\n", validity_start);
     print_int(validity_start, txContent->validity_start);
     PRINTF("validity start string: %s\n", txContent->validity_start);
     buffer += 4;
 
+    // Proccess the validity start field
     print_network_id(buffer, txContent->network);
     buffer++;
 
+    // Proccess the flags field
     uint8_t flags = buffer[0];
-    buffer++;
-    if (0 != flags) THROW(0x6a80);
+    PRINTF("flags: %u\n", flags);
+    if (0 != flags) THROW(0x6a80); // No flags are supported yet
 }

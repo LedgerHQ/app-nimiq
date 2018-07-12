@@ -56,8 +56,7 @@ uint32_t set_result_get_publicKey(void);
 
 #define MAX_UI_STEPS 11
 
-#define BASIC_TX_SIZE 66
-#define MAX_RAW_TX 66
+#define MAX_RAW_TX 130
 
 typedef struct publicKeyContext_t {
     cx_ecfp_public_key_t publicKey;
@@ -1313,7 +1312,8 @@ void ui_approve_tx_blue_init(void) {
 #if defined(TARGET_NANOS)
 // component id steps for different types of operations
 const uint8_t ui_elements_map[][MAX_UI_STEPS] = {
-  { 0x01, 0x02, 0x04, 0x05, 0x7, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00 }, // basic tx
+  { 0x01, 0x02, 0x04, 0x05, 0x07, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00 }, // basic tx
+  { 0x01, 0x02, 0x04, 0x05, 0x07, 0x08, 0x03, 0x00, 0x00, 0x00, 0x00 }, // basic tx + extra data
   { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11 }  // for future use in extended tx, not yet supported
 };
 
@@ -1515,7 +1515,7 @@ const bagl_element_t ui_approve_tx_nanos[] = {
      NULL,
      NULL,
      NULL},
-    {{BAGL_LABELINE, 0x08, 16, 26, 96, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
+    {{BAGL_LABELINE, 0x08, 23, 26, 82, 12, 0x80 | 10, 0, 0, 0xFFFFFF, 0x000000,
       BAGL_FONT_OPEN_SANS_EXTRABOLD_11px | BAGL_FONT_ALIGNMENT_CENTER, 26},
      ctx.req.tx.content.details1,
      0,
@@ -1680,9 +1680,9 @@ unsigned int io_seproxyhal_touch_tx_ok(const bagl_element_t *e) {
 
     // sign hash
 #if CX_APILEVEL >= 8
-    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, BASIC_TX_SIZE, NULL, 0, G_io_apdu_buffer, NULL);
+    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, NULL, 0, G_io_apdu_buffer, NULL);
 #else
-    tx = cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, BASIC_TX_SIZE, G_io_apdu_buffer);
+    tx = cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, G_io_apdu_buffer);
 #endif
     os_memset(&privateKey, 0, sizeof(privateKey));
 
