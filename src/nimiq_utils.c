@@ -31,29 +31,37 @@ static const char * captions[][5] = {
 
 static const uint8_t AMOUNT_MAX_SIZE = 17;
 
-void iban_check(char in[36], char *check) {
+void iban_check(char in[32], char *check) {
     unsigned int counter = 0;
     unsigned int offset = 0;
     unsigned int modulo = 0;
 
     int partial_uint = 0;
 
+    char address[36] = { 0 };
     char total_number[71] = { 0 };
     char partial_number[10] = { 0 };
+
+    // According to IBAN standard, "NQ00" needs to be appended to the original address to calculate the checksum
+    strncpy(&address[0], &in[0], 32);
+    address[32] = 'N';
+    address[33] = 'Q';
+    address[34] = '0';
+    address[35] = '0';
 
     // Convert the address to a number-only string
     for (unsigned int i = 0; i < 36; i++) {
         if (70 <= counter) {
             THROW(0x6700); // buffer overflow, signal error
         }
-        if (48 <= in[i] && 57 >= in[i]) {
-            total_number[counter++] = in[i];
-        } else if (65 <= in[i] && 90 >= in[i]) {
-            snprintf(&total_number[counter++], 3, "%d", in[i] - 55);
+        if (48 <= address[i] && 57 >= address[i]) {
+            total_number[counter++] = address[i];
+        } else if (65 <= address[i] && 90 >= address[i]) {
+            snprintf(&total_number[counter++], 3, "%d", address[i] - 55);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
-        } else if (97 <= in[i] && 122 >= in[i]) {
-            snprintf(&total_number[counter++], 3, "%d", in[i] - 87);
+        } else if (97 <= address[i] && 122 >= address[i]) {
+            snprintf(&total_number[counter++], 3, "%d", address[i] - 87);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
         } else {
@@ -85,14 +93,9 @@ void iban_check(char in[36], char *check) {
 
 void print_address(uint8_t *in, char *out) {
     unsigned int counter = 4;
-    char after_base32[36] = { 0 };
+    char after_base32[32] = { 0 };
 
     base32_encode(in, 20, after_base32, 32);
-
-    after_base32[32] = 'N';
-    after_base32[33] = 'Q';
-    after_base32[34] = '0';
-    after_base32[35] = '0';
     iban_check(after_base32, &out[2]);
 
     out[0] = 'N';
