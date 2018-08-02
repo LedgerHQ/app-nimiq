@@ -29,7 +29,11 @@
 #include "os.h"
 #endif // TEST
 
+#define MAX_DATA_LENGTH 64
+#define MAX_DATA_STRING_LENGTH (MAX_DATA_LENGTH + 1) // One more byte for the NULL string terminator
+
 #define OPERATION_TYPE_BASIC_TX 0
+#define OPERATION_TYPE_EXTRA_DATA_TX 1 // Same as BASIC_TX but with Extra Data
 
 #define CAPTION_TYPE_OPERATION 0
 #define CAPTION_TYPE_DETAILS1 1
@@ -44,7 +48,7 @@ typedef struct txContent_t {
     char fee[25];
     char validity_start[11];
     uint8_t operationType;
-    char details1[80];
+    char details1[MAX_DATA_STRING_LENGTH];
     char details2[45];
     char details3[15];
     char details4[15];
