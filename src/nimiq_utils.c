@@ -27,6 +27,7 @@
 static const char * captions[][5] = {
     {"Basic Tx", NULL, NULL, NULL, NULL},
     {"Tx with Data", "Data", NULL, NULL, NULL},
+    {"Cashlink Tx", NULL, NULL, NULL, NULL},
     {"Extended Tx", "Data", "Sender", "Sender Type", "Recipient Type"} // For future use, not yet supported
 };
 
@@ -256,6 +257,10 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
     // Process the extra data field
     if (0 == data_length) {
         txContent->operationType = OPERATION_TYPE_BASIC_TX;
+    } else if ((CASHLINK_MAGIC_NUMBER_LENGTH == data_length) &&
+     (0 == memcmp(buffer, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH))) {
+        txContent->operationType = OPERATION_TYPE_CASHLINK_TX;
+        buffer += CASHLINK_MAGIC_NUMBER_LENGTH;
     } else if (MAX_DATA_LENGTH >= data_length) {
         txContent->operationType = OPERATION_TYPE_EXTRA_DATA_TX;
 

@@ -32,8 +32,12 @@
 #define MAX_DATA_LENGTH 64
 #define MAX_DATA_STRING_LENGTH (MAX_DATA_LENGTH + 1) // One more byte for the NULL string terminator
 
+#define CASHLINK_MAGIC_NUMBER "\x00\x82\x80\x92\x87"
+#define CASHLINK_MAGIC_NUMBER_LENGTH 5
+
 #define OPERATION_TYPE_BASIC_TX 0
 #define OPERATION_TYPE_EXTRA_DATA_TX 1 // Same as BASIC_TX but with Extra Data
+#define OPERATION_TYPE_CASHLINK_TX 2 // BASIC_TX that funds a cashlink
 
 #define CAPTION_TYPE_OPERATION 0
 #define CAPTION_TYPE_DETAILS1 1
