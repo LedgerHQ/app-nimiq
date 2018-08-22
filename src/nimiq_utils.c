@@ -14,9 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  ********************************************************************************/
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <stdio.h>
 
 #include "nimiq_utils.h"
 #include "blake2b.h"
@@ -26,34 +26,44 @@
 
 static const char * captions[][5] = {
     {"Basic Tx", NULL, NULL, NULL, NULL},
+    {"Tx with Data", "Data", NULL, NULL, NULL},
+    {"Cashlink Tx", NULL, NULL, NULL, NULL},
     {"Extended Tx", "Data", "Sender", "Sender Type", "Recipient Type"} // For future use, not yet supported
 };
 
 static const uint8_t AMOUNT_MAX_SIZE = 17;
 
-void iban_check(char in[36], char *check) {
+void iban_check(char in[32], char *check) {
     unsigned int counter = 0;
     unsigned int offset = 0;
     unsigned int modulo = 0;
 
     int partial_uint = 0;
 
+    char address[36] = { 0 };
     char total_number[71] = { 0 };
     char partial_number[10] = { 0 };
+
+    // According to IBAN standard, "NQ00" needs to be appended to the original address to calculate the checksum
+    strncpy(&address[0], &in[0], 32);
+    address[32] = 'N';
+    address[33] = 'Q';
+    address[34] = '0';
+    address[35] = '0';
 
     // Convert the address to a number-only string
     for (unsigned int i = 0; i < 36; i++) {
         if (70 <= counter) {
             THROW(0x6700); // buffer overflow, signal error
         }
-        if (48 <= in[i] && 57 >= in[i]) {
-            total_number[counter++] = in[i];
-        } else if (65 <= in[i] && 90 >= in[i]) {
-            snprintf(&total_number[counter++], 3, "%d", in[i] - 55);
+        if (48 <= address[i] && 57 >= address[i]) {
+            total_number[counter++] = address[i];
+        } else if (65 <= address[i] && 90 >= address[i]) {
+            snprintf(&total_number[counter++], 3, "%d", address[i] - 55);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
-        } else if (97 <= in[i] && 122 >= in[i]) {
-            snprintf(&total_number[counter++], 3, "%d", in[i] - 87);
+        } else if (97 <= address[i] && 122 >= address[i]) {
+            snprintf(&total_number[counter++], 3, "%d", address[i] - 87);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
         } else {
@@ -85,14 +95,9 @@ void iban_check(char in[36], char *check) {
 
 void print_address(uint8_t *in, char *out) {
     unsigned int counter = 4;
-    char after_base32[36] = { 0 };
+    char after_base32[32] = { 0 };
 
     base32_encode(in, 20, after_base32, 32);
-
-    after_base32[32] = 'N';
-    after_base32[33] = 'Q';
-    after_base32[34] = '0';
-    after_base32[35] = '0';
     iban_check(after_base32, &out[2]);
 
     out[0] = 'N';
@@ -205,6 +210,26 @@ void print_network_id(uint8_t *in, char *out) {
     }
 }
 
+void print_extra_data(uint8_t *in, char *out, uint16_t data_size) {
+    // Extra safety check: make sure we don't get called with more data than
+    // we can fit on the extra data field.
+    if (MAX_DATA_LENGTH < data_size) THROW(0x6a80);
+
+    // Make sure that the string is always null-terminated
+    out[MAX_DATA_LENGTH] = '\0';
+
+    // Check if there is any non-printable ASCII characters
+    for (uint16_t i = 0; i < data_size; i++) {
+        if ((32 > in[i]) || (126 < in[i])) {
+            strcpy(out, "Binary data");
+            return;
+        }
+    }
+
+    // If there is not, copy the string to be displayed
+    strncpy(out, (char *) in, data_size);
+}
+
 void print_caption(uint8_t operationType, uint8_t captionType, char *out) {
     char *in = ((char*) PIC(captions[operationType][captionType]));
     if (in) {
@@ -213,7 +238,7 @@ void print_caption(uint8_t operationType, uint8_t captionType, char *out) {
 }
 
 uint16_t readUInt16Block(uint8_t *buffer) {
-    return buffer[0] + (buffer[1] << 8);
+    return buffer[1] + (buffer[0] << 8);
 }
 
 uint32_t readUInt32Block(uint8_t *buffer) {
@@ -228,47 +253,73 @@ uint64_t readUInt64Block(uint8_t *buffer) {
 }
 
 void parseTx(uint8_t *buffer, txContent_t *txContent) {
-    txContent->operationType = OPERATION_TYPE_BASIC_TX;
+    // Process the data length field
     uint16_t data_length = readUInt16Block(buffer);
+    PRINTF("data length: %u\n", data_length);
     buffer += 2;
-    if (0 != data_length) THROW(0x6a80);
 
-    buffer += 20; // For Basic Tx, ignore our own address
+    // Process the extra data field
+    if (0 == data_length) {
+        txContent->operationType = OPERATION_TYPE_BASIC_TX;
+    } else if ((CASHLINK_MAGIC_NUMBER_LENGTH == data_length) &&
+     (0 == memcmp(buffer, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH))) {
+        txContent->operationType = OPERATION_TYPE_CASHLINK_TX;
+        buffer += CASHLINK_MAGIC_NUMBER_LENGTH;
+    } else if (MAX_DATA_LENGTH >= data_length) {
+        txContent->operationType = OPERATION_TYPE_EXTRA_DATA_TX;
 
+        print_extra_data(buffer, txContent->details1, data_length);
+        PRINTF("data: %s\n", txContent->details1);
+        buffer += data_length;
+    } else {
+        THROW(0x6a80);
+    }
+
+    // Process the sender field
+    buffer += 20; // Ignore our own address for Basic Tx (even with data)
+
+    // Process the sender account type field
     uint8_t sender_type = buffer[0];
     buffer++;
-    if (0 != sender_type) THROW(0x6a80);
+    if (0 != sender_type) THROW(0x6a80); // We only support basic accounts
 
+    // Proccess the recipient field
     print_address(buffer, txContent->recipient);
     PRINTF("recipient: %s\n", txContent->recipient);
     buffer += 20;
 
+    // Proccess the recipient account type field
     uint8_t recipient_type = buffer[0];
     buffer++;
-    if (0 != recipient_type) THROW(0x6a80);
+    if (0 != recipient_type) THROW(0x6a80); // We only support basic accounts
 
+    // Proccess the value field
     uint64_t value = readUInt64Block(buffer);
     PRINTF("value: %lu\n", value);
     print_amount(value, "NIM", txContent->value);
     PRINTF("amount: %s\n", txContent->value);
     buffer += 8;
 
+    // Proccess the fee field
     uint64_t fee = readUInt64Block(buffer);
     PRINTF("fee: %lu\n", fee);
     print_amount(fee, "NIM", txContent->fee);
     PRINTF("fee amount: %s\n", txContent->fee);
     buffer += 8;
 
+    // Proccess the validity start field
     uint32_t validity_start = readUInt32Block(buffer);
     PRINTF("validity start: %u\n", validity_start);
     print_int(validity_start, txContent->validity_start);
     PRINTF("validity start string: %s\n", txContent->validity_start);
     buffer += 4;
 
+    // Proccess the validity start field
     print_network_id(buffer, txContent->network);
     buffer++;
 
+    // Proccess the flags field
     uint8_t flags = buffer[0];
-    buffer++;
-    if (0 != flags) THROW(0x6a80);
+    PRINTF("flags: %u\n", flags);
+    if (0 != flags) THROW(0x6a80); // No flags are supported yet
 }
