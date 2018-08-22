@@ -211,6 +211,10 @@ void print_network_id(uint8_t *in, char *out) {
 }
 
 void print_extra_data(uint8_t *in, char *out, uint16_t data_size) {
+    // Extra safety check: make sure we don't get called with more data than
+    // we can fit on the extra data field.
+    if (MAX_DATA_LENGTH < data_size) THROW(0x6a80);
+
     // Make sure that the string is always null-terminated
     out[MAX_DATA_LENGTH] = '\0';
 
