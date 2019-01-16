@@ -1895,6 +1895,9 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
 
         // read raw tx data
         ctx.req.tx.rawTxLength = dataLength;
+        if (dataLength > MAX_RAW_TX) {
+            THROW(0x6700);
+        }
         os_memmove(ctx.req.tx.rawTx, dataBuffer, dataLength);
     } else {
         // read more raw tx data
