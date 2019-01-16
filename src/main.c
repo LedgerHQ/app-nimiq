@@ -1675,7 +1675,7 @@ unsigned int io_seproxyhal_touch_tx_ok(const bagl_element_t *e) {
     // initialize private key
     uint8_t privateKeyData[32];
     cx_ecfp_private_key_t privateKey;
-    os_perso_derive_node_bip32(CX_CURVE_Ed25519, ctx.req.tx.bip32Path, ctx.req.tx.bip32PathLength, privateKeyData, NULL);
+    os_perso_derive_node_bip32_seed_key(HDW_ED25519_SLIP10, CX_CURVE_Ed25519, ctx.req.tx.bip32Path, ctx.req.tx.bip32PathLength, privateKeyData, NULL, "ed25519 seed", 12);
     cx_ecfp_init_private_key(CX_CURVE_Ed25519, privateKeyData, 32, &privateKey);
     os_memset(privateKeyData, 0, sizeof(privateKeyData));
 
@@ -1831,7 +1831,8 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
 
     uint8_t privateKeyData[32];
     cx_ecfp_private_key_t privateKey;
-    os_perso_derive_node_bip32(CX_CURVE_Ed25519, bip32Path, bip32PathLength, privateKeyData, NULL);
+    os_perso_derive_node_bip32_seed_key(HDW_ED25519_SLIP10, CX_CURVE_Ed25519, bip32Path, bip32PathLength, privateKeyData, NULL, "ed25519 seed", 12);
+
     cx_ecfp_init_private_key(CX_CURVE_Ed25519, privateKeyData, 32, &privateKey);
     os_memset(privateKeyData, 0, sizeof(privateKeyData));
     cx_ecfp_generate_pair(CX_CURVE_Ed25519, &ctx.req.pk.publicKey, &privateKey, 1);
