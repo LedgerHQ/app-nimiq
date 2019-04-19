@@ -85,15 +85,16 @@ generalContext_t ctx;
 
 volatile char operationCaption[15];
 
-#if defined(TARGET_NANOS)
+
+#if defined(TARGET_BLUE)
+volatile char displayString[33];
+volatile char subtitleCaption[16];
+bagl_element_t tmp_element;
+#else
 volatile char details1Caption[18];
 volatile char details2Caption[18];
 volatile char details3Caption[18];
 volatile char details4Caption[18];
-#elif defined(TARGET_BLUE)
-volatile char displayString[33];
-volatile char subtitleCaption[16];
-bagl_element_t tmp_element;
 #endif
 
 unsigned int io_seproxyhal_touch_settings(const bagl_element_t *e);
@@ -103,7 +104,15 @@ unsigned int io_seproxyhal_touch_tx_cancel(const bagl_element_t *e);
 unsigned int io_seproxyhal_touch_address_ok(const bagl_element_t *e);
 unsigned int io_seproxyhal_touch_address_cancel(const bagl_element_t *e);
 void ui_idle(void);
+
+#ifdef TARGET_NANOX
+#include "ux.h"
+ux_state_t G_ux;
+bolos_ux_params_t G_ux_params;
+#else // TARGET_NANOX
 ux_state_t ux;
+#endif // TARGET_NANOX
+
 // display stepped screens
 unsigned int ux_step;
 unsigned int ux_step_count;
@@ -113,8 +122,8 @@ typedef struct internalStorage_t {
     uint8_t initialized;
 } internalStorage_t;
 
-WIDE internalStorage_t N_storage_real;
-#define N_storage (*(WIDE internalStorage_t *)PIC(&N_storage_real))
+internalStorage_t const N_storage_real;
+#define N_storage (*(internalStorage_t *)PIC(&N_storage_real))
 
 const bagl_element_t *ui_menu_item_out_over(const bagl_element_t *e) {
     // the selection rectangle is after the none|touchable
@@ -1309,7 +1318,7 @@ void ui_approve_tx_blue_init(void) {
 
 #endif // #if defined(TARGET_BLUE)
 
-#if defined(TARGET_NANOS)
+
 // component id steps for different types of operations
 const uint8_t ui_elements_map[][MAX_UI_STEPS] = {
   { 0x01, 0x02, 0x04, 0x05, 0x07, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00 }, // basic tx
@@ -1317,6 +1326,8 @@ const uint8_t ui_elements_map[][MAX_UI_STEPS] = {
   { 0x01, 0x02, 0x04, 0x05, 0x07, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00 }, // cashlink tx
   { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11 }  // for future use in extended tx, not yet supported
 };
+
+#if defined(TARGET_NANOS)
 
 unsigned int ui_tx_approval_prepro(const bagl_element_t *element) {
     unsigned int display = 1;
@@ -1605,11 +1616,267 @@ const bagl_element_t ui_approve_tx_nanos[] = {
 };
 #endif // #if defined(TARGET_NANOS)
 
+#if defined(TARGET_NANOX)
+//////////////////////////////////////////////////////////////////////
+UX_STEP_NOCB(
+    ux_idle_flow_1_step, 
+    nn, 
+    {
+      "Application",
+      "is ready",
+    });
+UX_STEP_NOCB(
+    ux_idle_flow_3_step, 
+    bn, 
+    {
+      "Version",
+      APPVERSION,
+    });
+UX_STEP_VALID(
+    ux_idle_flow_4_step,
+    pb,
+    os_sched_exit(-1),
+    {
+      &C_icon_dashboard_x,
+      "Quit",
+    });
+UX_FLOW(ux_idle_flow,
+  &ux_idle_flow_1_step,
+  &ux_idle_flow_3_step,
+  &ux_idle_flow_4_step
+);
+
+//////////////////////////////////////////////////////////////////////
+
+void display_next_state(bool is_upper_border);
+
+char caption[18];
+char details[MAX_DATA_STRING_LENGTH];
+
+UX_STEP_NOCB(ux_confirm_flow_1_step, 
+    pnn, 
+    {
+      &C_icon_eye,
+      "Confirm",
+      "operation",
+    });
+UX_STEP_INIT(
+    ux_init_upper_border,
+    NULL,
+    NULL,
+    {
+        display_next_state(true);
+    });
+UX_STEP_NOCB(
+    ux_variable_display, 
+    bnnn_paging,
+    {
+      .title = caption,
+      .text = details,
+    });
+UX_STEP_INIT(
+    ux_init_lower_border,
+    NULL,
+    NULL,
+    {
+        display_next_state(false);
+    });
+UX_STEP_VALID(
+    ux_confirm_flow_5_step, 
+    pbb, 
+    io_seproxyhal_touch_tx_ok(NULL),
+    {
+      &C_icon_validate_14,
+      "Accept",
+      "and send",
+    });
+UX_STEP_VALID(
+    ux_confirm_flow_6_step, 
+    pb, 
+    io_seproxyhal_touch_tx_cancel(NULL),
+    {
+      &C_icon_crossmark,
+      "Reject",
+    });
+// confirm: confirm transaction / Amount: fullAmount / Address: fullAddress / Fees: feesAmount
+UX_FLOW(ux_confirm_flow,
+  &ux_confirm_flow_1_step,
+
+  &ux_init_upper_border,
+  &ux_variable_display,
+  &ux_init_lower_border,
+
+  &ux_confirm_flow_5_step,
+  &ux_confirm_flow_6_step
+);
+
+
+uint8_t num_data;
+volatile uint8_t current_data_index;
+volatile uint8_t current_state;
+
+#define INSIDE_BORDERS 0
+#define OUT_OF_BORDERS 1
+
+void set_state_data() {
+
+    switch (current_data_index)
+    {
+        case 0:
+            strncpy(caption, "Operation Type", sizeof(caption));
+            strncpy(details, operationCaption, sizeof(details));
+            break;
+
+        case 1:
+            strncpy(caption, "Recipient", sizeof(caption));
+            strncpy(details, ctx.req.tx.content.recipient, sizeof(details));
+            break;
+
+        case 2:
+            strncpy(caption, "Amount", sizeof(caption));
+            strncpy(details, ctx.req.tx.content.value, sizeof(details));
+            break;
+
+        case 3:
+            strncpy(caption, "Fee", sizeof(caption));
+            strncpy(details, ctx.req.tx.content.fee, sizeof(details));
+            break;
+
+        case 4:
+            strncpy(caption, "Validity Start", sizeof(caption));
+            strncpy(details, ctx.req.tx.content.validity_start, sizeof(details));
+            break;
+        
+        case 5:
+            strncpy(caption, "Network", sizeof(caption));
+            strncpy(details, ctx.req.tx.content.network, sizeof(details));
+            break;
+
+        case 6:
+            // set details 1
+            memcpy(caption, details1Caption, sizeof(caption));
+            memcpy(details, ctx.req.tx.content.details1, MAX_DATA_STRING_LENGTH);
+            break;
+        
+        case 7:
+            // set details 2
+            memcpy(caption, details2Caption, sizeof(caption));
+            memcpy(details, ctx.req.tx.content.details2, MAX_DATA_STRING_LENGTH);
+            break;
+
+        case 8:
+            // set details 3
+            memcpy(caption, details3Caption, sizeof(caption));
+            memcpy(details, ctx.req.tx.content.details3, MAX_DATA_STRING_LENGTH);
+            break;
+
+        case 9:
+            // set details 4
+            memcpy(caption, details4Caption, sizeof(caption));
+            memcpy(details, ctx.req.tx.content.details4, MAX_DATA_STRING_LENGTH);
+            break;
+    
+        default:
+            THROW(0x6666);
+            break;
+    }
+
+}
+
+void display_next_state(bool is_upper_border){
+
+    if(is_upper_border){ // walking over the first border
+        if(current_state == OUT_OF_BORDERS){
+            current_state = INSIDE_BORDERS;
+            set_state_data();
+            ux_flow_next();
+        }
+        else{
+            if(current_data_index>0){
+                current_data_index--;
+                set_state_data();
+                ux_flow_next();
+            }
+            else{
+                current_state = OUT_OF_BORDERS;
+                current_data_index = 0;
+                ux_flow_prev();
+            }
+        }
+    }
+    else // walking over the second border
+    {
+        if(current_state == OUT_OF_BORDERS){
+            current_state = INSIDE_BORDERS;
+            set_state_data();
+            ux_flow_prev();
+        }
+        else{
+            if(num_data != 0 && current_data_index<num_data-1){
+                current_data_index++;
+                set_state_data();
+                ux_flow_prev();
+            }
+            else{
+                current_state = OUT_OF_BORDERS;
+                ux_flow_next();
+            }
+        }
+    }
+    
+}
+
+//////////////////////////////////////////////////////////////////////
+
+UX_STEP_NOCB(
+    ux_display_public_flow_5_step, 
+    bnnn_paging, 
+    {
+      .title = "Address",
+      .text = ctx.req.pk.address,
+    });
+UX_STEP_VALID(
+    ux_display_public_flow_6_step, 
+    pb, 
+    io_seproxyhal_touch_address_ok(NULL),
+    {
+      &C_icon_validate_14,
+      "Approve",
+    });
+UX_STEP_VALID(
+    ux_display_public_flow_7_step, 
+    pb, 
+    io_seproxyhal_touch_address_cancel(NULL),
+    {
+      &C_icon_crossmark,
+      "Reject",
+    });
+
+UX_FLOW(ux_display_public_flow,
+  &ux_display_public_flow_5_step,
+  &ux_display_public_flow_6_step,
+  &ux_display_public_flow_7_step
+);
+
+
+//////////////////////////////////////////////////////////////////////
+
+#endif // #if defined(TARGET_NANOX)
+
+
+
+
 void ui_idle(void) {
 #if defined(TARGET_BLUE)
     UX_DISPLAY(ui_idle_blue, NULL);
 #elif defined(TARGET_NANOS)
     UX_MENU_DISPLAY(0, menu_main, NULL);
+#elif defined(TARGET_NANOX)
+    // reserve a display stack slot if none yet
+    if(G_ux.stack_count == 0) {
+        ux_stack_push();
+    }
+    ux_flow_init(0, ux_idle_flow, NULL);
 #endif // #if TARGET_ID
 }
 
@@ -1681,7 +1948,7 @@ unsigned int io_seproxyhal_touch_tx_ok(const bagl_element_t *e) {
 
     // sign hash
 #if CX_APILEVEL >= 8
-    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, NULL, 0, G_io_apdu_buffer, NULL);
+    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, NULL, 0, G_io_apdu_buffer, sizeof(G_io_apdu_buffer), NULL);
 #else
     tx = cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, G_io_apdu_buffer);
 #endif
@@ -1711,6 +1978,17 @@ unsigned int io_seproxyhal_touch_tx_cancel(const bagl_element_t *e) {
     return 0; // do not redraw the widget
 }
 
+
+uint8_t countSteps(uint8_t operationType) {
+    uint8_t i;
+    for (i = 0; i < MAX_UI_STEPS; i++) {
+        if (ui_elements_map[operationType][i] == 0x00) {
+            return i;
+        }
+    }
+    return MAX_UI_STEPS;
+}
+
 #if defined(TARGET_NANOS)
 unsigned int ui_approve_tx_nanos_button(unsigned int button_mask, unsigned int button_mask_counter) {
     switch (button_mask) {
@@ -1726,15 +2004,6 @@ unsigned int ui_approve_tx_nanos_button(unsigned int button_mask, unsigned int b
     return 0;
 }
 
-uint8_t countSteps(uint8_t operationType) {
-    uint8_t i;
-    for (i = 0; i < MAX_UI_STEPS; i++) {
-        if (ui_elements_map[operationType][i] == 0x00) {
-            return i;
-        }
-    }
-    return MAX_UI_STEPS;
-}
 
 #endif // #if defined(TARGET_NANOS)
 
@@ -1838,7 +2107,7 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
     cx_ecfp_generate_pair(CX_CURVE_Ed25519, &ctx.req.pk.publicKey, &privateKey, 1);
     if (ctx.req.pk.returnSignature) {
 #if CX_APILEVEL >= 8
-        cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, msg, msgLength, NULL, 0, ctx.req.pk.signature, NULL);
+        cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, msg, msgLength, NULL, 0, ctx.req.pk.signature, sizeof(ctx.req.pk.signature), NULL);
 #else
         cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, msg, msgLength, ctx.req.pk.signature);
 #endif
@@ -1862,6 +2131,8 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
         ux_step = 0;
         ux_step_count = 2;
         UX_DISPLAY(ui_address_nanos, ui_address_prepro);
+#elif defined(TARGET_NANOX)
+        ux_flow_init(0, ux_display_public_flow, NULL);
 #endif // #if TARGET
         *flags |= IO_ASYNCH_REPLY;
     } else {
@@ -1921,7 +2192,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     os_memset((char *)operationCaption, 0, sizeof(operationCaption));
     print_caption(ctx.req.tx.content.operationType, CAPTION_TYPE_OPERATION, (char *)operationCaption);
 
-#if defined(TARGET_NANOS)
+#ifndef TARGET_BLUE
     os_memset((char *)details1Caption, 0, sizeof(details1Caption));
     os_memset((char *)details2Caption, 0, sizeof(details2Caption));
     os_memset((char *)details3Caption, 0, sizeof(details3Caption));
@@ -1939,6 +2210,11 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     ux_step = 0;
     ux_step_count = countSteps(ctx.req.tx.content.operationType);
     UX_DISPLAY(ui_approve_tx_nanos, ui_tx_approval_prepro);
+#elif defined(TARGET_NANOX)
+    num_data = countSteps(ctx.req.tx.content.operationType);
+    current_data_index = 0;
+    current_state = OUT_OF_BORDERS;
+    ux_flow_init(0, ux_confirm_flow, NULL);
 #endif // #if TARGET
 
     *flags |= IO_ASYNCH_REPLY;
@@ -1990,6 +2266,9 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
                 THROW(0x6D00);
                 break;
             }
+        }
+        CATCH(EXCEPTION_IO_RESET) {
+            THROW(EXCEPTION_IO_RESET);
         }
         CATCH_OTHER(e) {
             switch (e & 0xF000) {
@@ -2046,7 +2325,12 @@ void nimiq_main(void) {
                     THROW(0x6982);
                 }
 
+                PRINTF("New APDU received:\n%.*H\n", rx, G_io_apdu_buffer);
+
                 handleApdu(&flags, &tx);
+            }
+            CATCH(EXCEPTION_IO_RESET) {
+                THROW(EXCEPTION_IO_RESET);
             }
             CATCH_OTHER(e) {
                 switch (e & 0xF000) {
@@ -2122,7 +2406,7 @@ unsigned char io_event(unsigned char channel) {
 
     case SEPROXYHAL_TAG_TICKER_EVENT:
 
-#ifdef TARGET_NANOS
+#ifndef TARGET_BLUE
         if (G_io_apdu_media == IO_APDU_MEDIA_U2F && ctx.u2fTimer > 0) {
             ctx.u2fTimer -= 100;
             if (ctx.u2fTimer <= 0) {
@@ -2180,6 +2464,11 @@ __attribute__((section(".boot"))) int main(void) {
             TRY {
                 io_seproxyhal_init();
 
+#ifdef TARGET_NANOX
+                // grab the current plane mode setting
+                G_io_app.plane_mode = os_setting_get(OS_SETTING_PLANEMODE, NULL, 0);
+#endif // TARGET_NANOX
+
                 if (N_storage.initialized != 0x01) {
                     internalStorage_t storage;
                     storage.fidoTransport = 0x01;
@@ -2189,8 +2478,15 @@ __attribute__((section(".boot"))) int main(void) {
                 }
 
                 // deactivate usb before activating
-                USB_power(false);
-                USB_power(true);
+                USB_power(0);
+                USB_power(1);
+
+                ui_idle();
+
+#ifdef HAVE_BLE
+                BLE_power(0, NULL);
+                BLE_power(1, "Nano X");
+#endif // HAVE_BLE
 
 #if defined(TARGET_BLUE)
                 // setup the status bar colors (remembered after wards, even
@@ -2199,14 +2495,15 @@ __attribute__((section(".boot"))) int main(void) {
                 UX_SET_STATUS_BAR_COLOR(0xFFFFFF, COLOR_APP);
 #endif // #if defined(TARGET_BLUE)
 
-                ui_idle();
                 nimiq_main();
             }
             CATCH(EXCEPTION_IO_RESET) {
                 // reset IO and UX
+                CLOSE_TRY;
                 continue;
             }
             CATCH_ALL {
+                CLOSE_TRY;
                 break;
             }
             FINALLY {
