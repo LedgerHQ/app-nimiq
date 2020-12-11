@@ -2229,7 +2229,7 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
 
     BEGIN_TRY {
         TRY {
-            if (os_global_pin_is_validated() != BOLOS_TRUE) {
+            if (os_global_pin_is_validated() != BOLOS_UX_OK) {
                 THROW(0x6982);
             }
             if (G_io_apdu_buffer[OFFSET_CLA] != CLA) {
