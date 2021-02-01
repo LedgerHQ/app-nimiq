@@ -23,7 +23,7 @@
 #include "os_io_seproxyhal.h"
 #include "string.h"
 
-#include "glyphs.h"
+#include "ux.h"
 
 #include "nimiq_utils.h"
 
