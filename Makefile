@@ -28,15 +28,10 @@ APPVERSION_N=4
 APPVERSION_P=6
 APPVERSION=$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)
 
-#prepare hsm generation
-ifeq ($(TARGET_NAME),TARGET_BLUE)
-ICONNAME=blue_app_nimiq.gif
-else
-	ifeq ($(TARGET_NAME),TARGET_NANOX)
+ifeq ($(TARGET_NAME),TARGET_NANOX)
 ICONNAME=nanox_app_nimiq.gif
-	else
+else
 ICONNAME=nanos_app_nimiq.gif
-	endif
 endif
 
 ################
@@ -124,7 +119,7 @@ AS     := $(GCCPATH)arm-none-eabi-gcc
 
 LD       := $(GCCPATH)arm-none-eabi-gcc
 LDFLAGS  += -O3 -Os
-LDLIBS   += -lm -lgcc -lc 
+LDLIBS   += -lm -lgcc -lc
 
 # import rules to compile glyphs(/pone)
 include $(BOLOS_SDK)/Makefile.glyphs
