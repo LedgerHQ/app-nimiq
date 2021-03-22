@@ -36,7 +36,6 @@ uint32_t set_result_get_publicKey(void);
 #define CLA 0xE0
 #define INS_GET_PUBLIC_KEY 0x02
 #define INS_SIGN_TX 0x04
-#define INS_GET_APP_CONFIGURATION 0x06
 #define INS_KEEP_ALIVE 0x08
 #define P1_NO_SIGNATURE 0x00
 #define P1_SIGNATURE 0x01
@@ -825,15 +824,6 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
     }
 }
 
-void handleGetAppConfiguration(volatile unsigned int *tx) {
-    G_io_apdu_buffer[0] = 0x00;
-    G_io_apdu_buffer[1] = LEDGER_MAJOR_VERSION;
-    G_io_apdu_buffer[2] = LEDGER_MINOR_VERSION;
-    G_io_apdu_buffer[3] = LEDGER_PATCH_VERSION;
-    *tx = 4;
-    THROW(0x9000);
-}
-
 void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLength, volatile unsigned int *flags, volatile unsigned int *tx) {
 
     if ((p1 != P1_FIRST) && (p1 != P1_MORE)) {
@@ -931,10 +921,6 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
                              G_io_apdu_buffer[OFFSET_P2],
                              G_io_apdu_buffer + OFFSET_CDATA,
                              G_io_apdu_buffer[OFFSET_LC], flags, tx);
-                break;
-
-            case INS_GET_APP_CONFIGURATION:
-                handleGetAppConfiguration(tx);
                 break;
 
             case INS_KEEP_ALIVE:

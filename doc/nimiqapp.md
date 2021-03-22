@@ -88,33 +88,6 @@ This command signs a Nimiq basic transaction and lets users validate the operati
 | EDDSA encoded signature (ed25519)                                                 | 64       |
 
 
-### Get app configuration
-
-#### Description
-
-This command returns specific application configuration.
-
-#### Coding
-
-**Command**
-
-| *CLA* | *INS*  | *P1*               | *P2*       | *Lc*     | *Le* |
-|-------|--------|--------------------|------------|----------|------|
-|   E0  |   06   |                    |            |          |      |
-
-**Input data**
-
-None
-
-**Output data**
-
-| *Description*                                                                     | *Length* |
-|-----------------------------------------------------------------------------------|----------|
-| Flags                                                                             | 1        |
-| Application major version                                                         | 1        |
-| Application minor version                                                         | 1        |
-| Application patch version                                                         | 1        |
-
 ## Transport protocol
 
 ### General transport description
