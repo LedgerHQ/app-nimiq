@@ -809,7 +809,7 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
         if ((ctx.req.pk.publicKey.W[32] & 1) != 0) {
             publicKey[31] |= 0x80;
         }
-        print_public_key(publicKey, ctx.req.pk.address);
+        print_public_key_as_address(publicKey, ctx.req.pk.address);
 #if defined(TARGET_NANOS)
         ux_step = 0;
         ux_step_count = 2;

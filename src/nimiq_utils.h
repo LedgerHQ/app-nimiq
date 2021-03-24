@@ -62,7 +62,7 @@ void parseTx(uint8_t *buffer, txContent_t *txContent);
 
 void print_address(uint8_t *in, char *out);
 
-void print_public_key(uint8_t *in, char *out);
+void print_public_key_as_address(uint8_t *in, char *out);
 
 void print_amount(uint64_t amount, char *asset, char *out);
 

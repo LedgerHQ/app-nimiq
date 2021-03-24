@@ -19,7 +19,6 @@
 #include <string.h>
 
 #include "nimiq_utils.h"
-#include "blake2b.h"
 #include "base32.h"
 
 #define MAX_SAFE_INTEGER 9007199254740991
@@ -114,14 +113,14 @@ void print_address(uint8_t *in, char *out) {
     out[44] = '\0';
 }
 
-void print_public_key(uint8_t *in, char *out) {
-    uint8_t after_blake[32] = { 0 };
-    uint8_t short_blake[20] = { 0 };
+void print_public_key_as_address(uint8_t *in, char *out) {
+    // See lcx_blake2.h and lcx_hash.h in Ledger sdk
+    unsigned char blake2b_hash[32]; // the first 20 bytes of the hash will be the Nimiq address
+    cx_blake2b_t blake2b_context;
+    cx_blake2b_init(&blake2b_context, /* hash length in bits */ 256);
+    cx_hash(&blake2b_context.header, CX_LAST, in, 32, blake2b_hash, 32);
 
-    blake2b(after_blake, 32, NULL, 0, in, 32);
-    memcpy(short_blake, after_blake, 20);
-
-    print_address(short_blake, out);
+    print_address(blake2b_hash, out);
 }
 
 void print_amount(uint64_t amount, char *asset, char *out) {
