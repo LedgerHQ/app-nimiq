@@ -25,6 +25,7 @@
 #include "ux.h"
 
 #include "nimiq_utils.h"
+#include "ux_macros.h"
 
 unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
@@ -51,8 +52,6 @@ uint32_t set_result_get_publicKey(void);
 #define OFFSET_P2 3
 #define OFFSET_LC 4
 #define OFFSET_CDATA 5
-
-#define MAX_UI_STEPS 11
 
 #define MAX_RAW_TX 130
 
@@ -81,13 +80,6 @@ typedef struct {
 
 generalContext_t ctx;
 
-volatile char operationCaption[15];
-
-volatile char details1Caption[18];
-volatile char details2Caption[18];
-volatile char details3Caption[18];
-volatile char details4Caption[18];
-
 unsigned int io_seproxyhal_touch_tx_ok();
 unsigned int io_seproxyhal_touch_tx_cancel();
 unsigned int io_seproxyhal_touch_address_ok();
@@ -105,265 +97,143 @@ typedef struct internalStorage_t {
 internalStorage_t const N_storage_real;
 #define N_storage (*(internalStorage_t *)PIC(&N_storage_real))
 
-// component id steps for different types of operations
-const uint8_t ui_elements_map[][MAX_UI_STEPS] = {
-  { 0x01, 0x02, 0x04, 0x05, 0x07, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00 }, // basic tx
-  { 0x01, 0x02, 0x04, 0x05, 0x07, 0x08, 0x03, 0x00, 0x00, 0x00, 0x00 }, // basic tx + extra data
-  { 0x01, 0x02, 0x04, 0x05, 0x07, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00 }, // cashlink tx
-  { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11 }  // for future use in extended tx, not yet supported
-};
-
 //////////////////////////////////////////////////////////////////////
 
 // Main Menu
 UX_STEP_NOCB(
-    ux_idle_flow_1_step,
+    ux_idle_flow_welcome_step,
     nn,
     {
-      "Application",
-      "is ready",
+        "Application",
+        "is ready",
     });
 UX_STEP_NOCB(
-    ux_idle_flow_3_step,
+    ux_idle_flow_version_step,
     bn,
     {
-      "Version",
-      APPVERSION,
+        "Version",
+        APPVERSION,
     });
-UX_STEP_VALID(
-    ux_idle_flow_4_step,
+UX_STEP_CB(
+    ux_idle_flow_quit_step,
     pb,
     os_sched_exit(-1),
     {
-      &C_icon_dashboard,
-      "Quit",
+        &C_icon_dashboard,
+        "Quit",
     });
 UX_FLOW(ux_idle_flow,
-  &ux_idle_flow_1_step,
-  &ux_idle_flow_3_step,
-  &ux_idle_flow_4_step
+    &ux_idle_flow_welcome_step,
+    &ux_idle_flow_version_step,
+    &ux_idle_flow_quit_step
 );
 
 //////////////////////////////////////////////////////////////////////
 
-void display_next_state(bool is_upper_border);
-
-char caption[18];
-char details[MAX_DATA_STRING_LENGTH];
-
 // Transaction confirmation UI
-UX_STEP_NOCB(ux_confirm_flow_1_step,
+UX_STEP_NOCB(ux_transaction_flow_transaction_type_step,
     pnn,
     {
-      &C_icon_eye,
-      "Confirm",
-      "operation",
-    });
-UX_STEP_INIT(
-    ux_init_upper_border,
-    NULL,
-    NULL,
-    {
-        display_next_state(true);
+        &C_icon_eye,
+        "Confirm",
+        ctx.req.tx.content.transaction_type_label,
     });
 UX_STEP_NOCB(
-    ux_variable_display,
-    bnnn_paging,
+    ux_transaction_flow_amount_step,
+    paging,
     {
-      .title = caption,
-      .text = details,
+        "Amount",
+        ctx.req.tx.content.value,
     });
-UX_STEP_INIT(
-    ux_init_lower_border,
-    NULL,
-    NULL,
+UX_OPTIONAL_STEP_NOCB(
+    ux_transaction_flow_fee_step,
+    paging,
+    strcmp(ctx.req.tx.content.fee, "0 NIM") != 0,
     {
-        display_next_state(false);
+        "Fee",
+        ctx.req.tx.content.fee,
     });
-UX_STEP_VALID(
-    ux_confirm_flow_5_step,
+UX_STEP_NOCB(
+    ux_transaction_flow_recipient_step,
+    paging,
+    {
+        "Recipient",
+        ctx.req.tx.content.recipient,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_transaction_flow_data_step,
+    paging,
+    ctx.req.tx.content.transaction_type != TRANSACTION_TYPE_CASHLINK && strlen(ctx.req.tx.content.extra_data),
+    {
+        "Data",
+        ctx.req.tx.content.extra_data,
+    });
+UX_STEP_NOCB(
+    ux_transaction_flow_network_step,
+    paging,
+    {
+        "Network",
+        ctx.req.tx.content.network,
+    });
+UX_STEP_CB(
+    ux_transaction_flow_approve_step,
     pbb,
     io_seproxyhal_touch_tx_ok(),
     {
-      &C_icon_validate_14,
-      "Accept",
-      "and send",
+        &C_icon_validate_14,
+        "Accept",
+        "and send",
     });
-UX_STEP_VALID(
-    ux_confirm_flow_6_step,
+UX_STEP_CB(
+    ux_transaction_flow_reject_step,
     pb,
     io_seproxyhal_touch_tx_cancel(),
     {
-      &C_icon_crossmark,
-      "Reject",
+        &C_icon_crossmark,
+        "Reject",
     });
-// confirm: confirm transaction / Amount: fullAmount / Address: fullAddress / Fees: feesAmount
-UX_FLOW(ux_confirm_flow,
-  &ux_confirm_flow_1_step,
-
-  &ux_init_upper_border,
-  &ux_variable_display,
-  &ux_init_lower_border,
-
-  &ux_confirm_flow_5_step,
-  &ux_confirm_flow_6_step
+UX_FLOW(ux_transaction_flow,
+    &ux_transaction_flow_transaction_type_step,
+    &ux_transaction_flow_amount_step,
+    &ux_transaction_flow_fee_step, // optional
+    &ux_transaction_flow_recipient_step,
+    &ux_transaction_flow_data_step, // optional
+    &ux_transaction_flow_network_step,
+    &ux_transaction_flow_approve_step,
+    &ux_transaction_flow_reject_step
 );
-
-
-uint8_t num_data;
-volatile uint8_t current_data_index;
-volatile uint8_t current_state;
-
-#define INSIDE_BORDERS 0
-#define OUT_OF_BORDERS 1
-
-void set_state_data() {
-
-    switch (current_data_index)
-    {
-        case 0:
-            strncpy(caption, "Operation Type", sizeof(caption));
-            strncpy(details, operationCaption, sizeof(details));
-            break;
-
-        case 1:
-            strncpy(caption, "Recipient", sizeof(caption));
-            strncpy(details, ctx.req.tx.content.recipient, sizeof(details));
-            break;
-
-        case 2:
-            strncpy(caption, "Amount", sizeof(caption));
-            strncpy(details, ctx.req.tx.content.value, sizeof(details));
-            break;
-
-        case 3:
-            strncpy(caption, "Fee", sizeof(caption));
-            strncpy(details, ctx.req.tx.content.fee, sizeof(details));
-            break;
-
-        case 4:
-            strncpy(caption, "Validity Start", sizeof(caption));
-            strncpy(details, ctx.req.tx.content.validity_start, sizeof(details));
-            break;
-
-        case 5:
-            strncpy(caption, "Network", sizeof(caption));
-            strncpy(details, ctx.req.tx.content.network, sizeof(details));
-            break;
-
-        case 6:
-            // set details 1
-            memcpy(caption, details1Caption, sizeof(caption));
-            memcpy(details, ctx.req.tx.content.details1, MAX_DATA_STRING_LENGTH);
-            break;
-
-        case 7:
-            // set details 2
-            memcpy(caption, details2Caption, sizeof(caption));
-            memcpy(details, ctx.req.tx.content.details2, MAX_DATA_STRING_LENGTH);
-            break;
-
-        case 8:
-            // set details 3
-            memcpy(caption, details3Caption, sizeof(caption));
-            memcpy(details, ctx.req.tx.content.details3, MAX_DATA_STRING_LENGTH);
-            break;
-
-        case 9:
-            // set details 4
-            memcpy(caption, details4Caption, sizeof(caption));
-            memcpy(details, ctx.req.tx.content.details4, MAX_DATA_STRING_LENGTH);
-            break;
-
-        default:
-            THROW(0x6666);
-            break;
-    }
-
-}
-
-void display_next_state(bool is_upper_border){
-
-    if(is_upper_border){ // walking over the first border
-        if(current_state == OUT_OF_BORDERS){
-            // coming from first step by navigating right. Push to ux_variable_display, inside the borders.
-            current_state = INSIDE_BORDERS;
-            set_state_data();
-            ux_flow_next();
-        }
-        else{
-            // coming from ux_variable_display by navigating left.
-            if(current_data_index>0){
-                // Reduce data index and push back to ux_variable_display.
-                current_data_index--;
-                set_state_data();
-                ux_flow_next();
-            }
-            else{
-                // Leave the borders by going back to the first step.
-                current_state = OUT_OF_BORDERS;
-                current_data_index = 0;
-                ux_flow_prev();
-            }
-        }
-    }
-    else // walking over the second border
-    {
-        if(current_state == OUT_OF_BORDERS){
-            // coming from confirmation step by navigating left. Push to ux_variable_display, inside the borders.
-            current_state = INSIDE_BORDERS;
-            set_state_data();
-            ux_flow_prev();
-        }
-        else{
-            // coming from ux_variable_display by navigating right.
-            if(num_data != 0 && current_data_index<num_data-1){
-                // Increase data index and push back to ux_variable_display.
-                current_data_index++;
-                set_state_data();
-                ux_flow_prev();
-            }
-            else{
-                // Leave the borders by going to confirmation step.
-                current_state = OUT_OF_BORDERS;
-                ux_flow_next();
-            }
-        }
-    }
-
-}
 
 //////////////////////////////////////////////////////////////////////
 
 // Address confirmation UI
 UX_STEP_NOCB(
-    ux_display_public_flow_5_step,
-    bnnn_paging,
+    ux_public_key_flow_address_step,
+    paging,
     {
-      .title = "Address",
-      .text = ctx.req.pk.address,
+        "Address",
+        ctx.req.pk.address,
     });
-UX_STEP_VALID(
-    ux_display_public_flow_6_step,
+UX_STEP_CB(
+    ux_public_key_flow_approve_step,
     pb,
     io_seproxyhal_touch_address_ok(),
     {
-      &C_icon_validate_14,
-      "Approve",
+        &C_icon_validate_14,
+        "Approve",
     });
-UX_STEP_VALID(
-    ux_display_public_flow_7_step,
+UX_STEP_CB(
+    ux_public_key_flow_reject_step,
     pb,
     io_seproxyhal_touch_address_cancel(),
     {
-      &C_icon_crossmark,
-      "Reject",
+        &C_icon_crossmark,
+        "Reject",
     });
 
-UX_FLOW(ux_display_public_flow,
-  &ux_display_public_flow_5_step,
-  &ux_display_public_flow_6_step,
-  &ux_display_public_flow_7_step
+UX_FLOW(ux_public_key_flow,
+    &ux_public_key_flow_address_step,
+    &ux_public_key_flow_approve_step,
+    &ux_public_key_flow_reject_step
 );
 
 
@@ -402,7 +272,6 @@ unsigned int io_seproxyhal_touch_address_cancel() {
     ui_idle();
     return 0; // do not redraw the widget
 }
-
 
 unsigned int io_seproxyhal_touch_tx_ok() {
     uint32_t tx = 0;
@@ -446,17 +315,6 @@ unsigned int io_seproxyhal_touch_tx_cancel() {
     return 0; // do not redraw the widget
 }
 
-
-uint8_t countSteps(uint8_t operationType) {
-    uint8_t i;
-    for (i = 0; i < MAX_UI_STEPS; i++) {
-        if (ui_elements_map[operationType][i] == 0x00) {
-            return i;
-        }
-    }
-    return MAX_UI_STEPS;
-}
-
 // delegate function for generic io_exchange, see ledger-nanos-secure-sdk
 unsigned short io_exchange_al(unsigned char channel, unsigned short tx_len) {
     switch (channel & ~(IO_FLAGS)) {
@@ -482,7 +340,6 @@ unsigned short io_exchange_al(unsigned char channel, unsigned short tx_len) {
     }
     return 0;
 }
-
 
 uint32_t set_result_get_publicKey() {
     uint32_t tx = 0;
@@ -576,7 +433,7 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
             publicKey[31] |= 0x80;
         }
         print_public_key_as_address(publicKey, ctx.req.pk.address);
-        ux_flow_init(0, ux_display_public_flow, NULL);
+        ux_flow_init(0, ux_public_key_flow, NULL);
         *flags |= IO_ASYNCH_REPLY;
     } else {
         *tx = set_result_get_publicKey();
@@ -622,23 +479,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
     parseTx(ctx.req.tx.rawTx, &ctx.req.tx.content);
 
-    // prepare for display
-    os_memset((char *)operationCaption, 0, sizeof(operationCaption));
-    print_caption(ctx.req.tx.content.operationType, CAPTION_TYPE_OPERATION, (char *)operationCaption);
-
-    os_memset((char *)details1Caption, 0, sizeof(details1Caption));
-    os_memset((char *)details2Caption, 0, sizeof(details2Caption));
-    os_memset((char *)details3Caption, 0, sizeof(details3Caption));
-    os_memset((char *)details4Caption, 0, sizeof(details4Caption));
-    print_caption(ctx.req.tx.content.operationType, CAPTION_TYPE_DETAILS1, (char *)details1Caption);
-    print_caption(ctx.req.tx.content.operationType, CAPTION_TYPE_DETAILS2, (char *)details2Caption);
-    print_caption(ctx.req.tx.content.operationType, CAPTION_TYPE_DETAILS3, (char *)details3Caption);
-    print_caption(ctx.req.tx.content.operationType, CAPTION_TYPE_DETAILS4, (char *)details4Caption);
-
-    num_data = countSteps(ctx.req.tx.content.operationType);
-    current_data_index = 0;
-    current_state = OUT_OF_BORDERS;
-    ux_flow_init(0, ux_confirm_flow, NULL);
+    ux_flow_init(0, ux_transaction_flow, NULL);
 
     *flags |= IO_ASYNCH_REPLY;
 }

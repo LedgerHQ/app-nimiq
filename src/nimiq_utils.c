@@ -23,13 +23,6 @@
 
 #define MAX_SAFE_INTEGER 9007199254740991
 
-static const char * captions[][5] = {
-    {"Basic Tx", NULL, NULL, NULL, NULL},
-    {"Tx with Data", "Data", NULL, NULL, NULL},
-    {"Cashlink Tx", NULL, NULL, NULL, NULL},
-    {"Extended Tx", "Data", "Sender", "Sender Type", "Recipient Type"} // For future use, not yet supported
-};
-
 static const uint8_t AMOUNT_MAX_SIZE = 17;
 
 void iban_check(char in[32], char *check) {
@@ -229,10 +222,16 @@ void print_extra_data(uint8_t *in, char *out, uint16_t data_size) {
     strncpy(out, (char *) in, data_size);
 }
 
-void print_caption(uint8_t operationType, uint8_t captionType, char *out) {
-    char *in = ((char*) PIC(captions[operationType][captionType]));
-    if (in) {
-        strcpy(out, in);
+void print_transaction_type(transaction_type_t transaction_type, char *out) {
+    switch (transaction_type) {
+        case TRANSACTION_TYPE_BASIC:
+            strcpy(out, "Transaction");
+            break;
+        case TRANSACTION_TYPE_CASHLINK:
+            strcpy(out, "Cashlink");
+            break;
+        default:
+            THROW(0x6a80);
     }
 }
 
@@ -259,20 +258,22 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
 
     // Process the extra data field
     if (0 == data_length) {
-        txContent->operationType = OPERATION_TYPE_BASIC_TX;
+        txContent->transaction_type = TRANSACTION_TYPE_BASIC;
     } else if ((CASHLINK_MAGIC_NUMBER_LENGTH == data_length) &&
      (0 == memcmp(buffer, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH))) {
-        txContent->operationType = OPERATION_TYPE_CASHLINK_TX;
+        txContent->transaction_type = TRANSACTION_TYPE_CASHLINK;
         buffer += CASHLINK_MAGIC_NUMBER_LENGTH;
     } else if (MAX_DATA_LENGTH >= data_length) {
-        txContent->operationType = OPERATION_TYPE_EXTRA_DATA_TX;
+        txContent->transaction_type = TRANSACTION_TYPE_BASIC;
 
-        print_extra_data(buffer, txContent->details1, data_length);
-        PRINTF("data: %s\n", txContent->details1);
+        print_extra_data(buffer, txContent->extra_data, data_length);
+        PRINTF("data: %s\n", txContent->extra_data);
         buffer += data_length;
     } else {
         THROW(0x6a80);
     }
+
+    print_transaction_type(txContent->transaction_type, txContent->transaction_type_label);
 
     // Process the sender field
     buffer += 20; // Ignore our own address for Basic Tx (even with data)

@@ -35,27 +35,20 @@
 #define CASHLINK_MAGIC_NUMBER "\x00\x82\x80\x92\x87"
 #define CASHLINK_MAGIC_NUMBER_LENGTH 5
 
-#define OPERATION_TYPE_BASIC_TX 0
-#define OPERATION_TYPE_EXTRA_DATA_TX 1 // Same as BASIC_TX but with Extra Data
-#define OPERATION_TYPE_CASHLINK_TX 2 // BASIC_TX that funds a cashlink
-
-#define CAPTION_TYPE_OPERATION 0
-#define CAPTION_TYPE_DETAILS1 1
-#define CAPTION_TYPE_DETAILS2 2
-#define CAPTION_TYPE_DETAILS3 3
-#define CAPTION_TYPE_DETAILS4 4
+typedef enum {
+    TRANSACTION_TYPE_BASIC,
+    TRANSACTION_TYPE_CASHLINK, // Basic transaction that funds a cashlink
+} transaction_type_t;
 
 typedef struct txContent_t {
-    char network[12];
-    char recipient[45];
+    transaction_type_t transaction_type;
+    char transaction_type_label[12];
     char value[25];
     char fee[25];
+    char recipient[45];
+    char network[12];
     char validity_start[11];
-    uint8_t operationType;
-    char details1[MAX_DATA_STRING_LENGTH];
-    char details2[45];
-    char details3[15];
-    char details4[15];
+    char extra_data[MAX_DATA_STRING_LENGTH];
 } txContent_t;
 
 void parseTx(uint8_t *buffer, txContent_t *txContent);
@@ -68,7 +61,7 @@ void print_amount(uint64_t amount, char *asset, char *out);
 
 void print_network_id(uint8_t *in, char *out);
 
-void print_caption(uint8_t operationType, uint8_t captionType, char *out);
+void print_transaction_type(transaction_type_t transaction_type, char *out);
 
 void print_int(uint32_t in, char *out);
 
