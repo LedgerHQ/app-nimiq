@@ -164,30 +164,6 @@ void print_amount(uint64_t amount, char *asset, char *out) {
 
 }
 
-void print_int(uint32_t id, char *out) {
-    char buffer[10];
-    uint64_t dVal = id;
-    int i, j;
-
-    memset(buffer, 0, 10);
-    for (i = 0; dVal > 0; i++) {
-        buffer[i] = (dVal % 10) + '0';
-        dVal /= 10;
-        if (i >= 10) {
-            THROW(0x6700);
-        }
-    }
-    // reverse order
-    for (i -= 1, j = 0; i >= 0 && j < 10-1; i--, j++) {
-        out[j] = buffer[i];
-    }
-    if (j == 0) {
-        out[0] = '0';
-        j++;
-    }
-    out[j] = '\0';
-}
-
 void print_network_id(uint8_t *in, char *out) {
     if (42 == in[0]) {
         strcpy(out, "Main");
@@ -307,11 +283,7 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
     PRINTF("fee amount: %s\n", txContent->fee);
     buffer += 8;
 
-    // Proccess the validity start field
-    uint32_t validity_start = readUInt32Block(buffer);
-    PRINTF("validity start: %u\n", validity_start);
-    print_int(validity_start, txContent->validity_start);
-    PRINTF("validity start string: %s\n", txContent->validity_start);
+    // Skip the validity start field
     buffer += 4;
 
     // Proccess the validity start field

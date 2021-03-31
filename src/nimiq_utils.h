@@ -47,7 +47,6 @@ typedef struct txContent_t {
     char fee[25];
     char recipient[45];
     char network[12];
-    char validity_start[11];
     char extra_data[MAX_DATA_STRING_LENGTH];
 } txContent_t;
 
@@ -62,8 +61,5 @@ void print_amount(uint64_t amount, char *asset, char *out);
 void print_network_id(uint8_t *in, char *out);
 
 void print_transaction_type(transaction_type_t transaction_type, char *out);
-
-void print_int(uint32_t in, char *out);
-
 
 #endif // _NIMIQ_UTILS_H_
