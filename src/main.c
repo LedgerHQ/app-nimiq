@@ -125,7 +125,8 @@ UX_STEP_CB(
 UX_FLOW(ux_idle_flow,
     &ux_idle_flow_welcome_step,
     &ux_idle_flow_version_step,
-    &ux_idle_flow_quit_step
+    &ux_idle_flow_quit_step,
+    FLOW_LOOP
 );
 
 //////////////////////////////////////////////////////////////////////
