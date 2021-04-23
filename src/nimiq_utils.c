@@ -45,21 +45,23 @@ void iban_check(char in[32], char *check) {
 
     // Convert the address to a number-only string
     for (unsigned int i = 0; i < 36; i++) {
-        if (70 <= counter) {
-            THROW(0x6700); // buffer overflow, signal error
+        if (counter >= 70) {
+            PRINTF("Overflow in iban check");
+            THROW(0x6700);
         }
-        if (48 <= address[i] && 57 >= address[i]) {
+        if (address[i] >= 48 && address[i] <= 57) {
             total_number[counter++] = address[i];
-        } else if (65 <= address[i] && 90 >= address[i]) {
+        } else if (address[i] >= 65 && address[i] <= 90) {
             snprintf(&total_number[counter++], 3, "%d", address[i] - 55);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
-        } else if (97 <= address[i] && 122 >= address[i]) {
+        } else if (address[i] >= 97 && address[i] <= 122) {
             snprintf(&total_number[counter++], 3, "%d", address[i] - 87);
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
         } else {
-            THROW(0x6a80); // invalid ascii code, signal error
+            PRINTF("Invalid ascii code in iban check");
+            THROW(0x6a80);
         }
     }
 
@@ -122,7 +124,10 @@ void parse_amount(uint64_t amount, char *asset, char *out) {
     int i, j;
 
     // If the amount can't be represented safely in JavaScript, signal an error
-    if (MAX_SAFE_INTEGER < amount) THROW(0x6a80);
+    if (amount > MAX_SAFE_INTEGER) {
+        PRINTF("Invalid amount");
+        THROW(0x6a80);
+    }
 
     memset(buffer, 0, AMOUNT_MAX_SIZE);
     for (i = 0; dVal > 0 || i < 7; i++) {
@@ -137,6 +142,7 @@ void parse_amount(uint64_t amount, char *asset, char *out) {
             buffer[i] = '.';
         }
         if (i >= AMOUNT_MAX_SIZE) {
+            PRINTF("Overflow in parse_amount");
             THROW(0x6700);
         }
     }
@@ -174,13 +180,17 @@ void parse_network_id(uint8_t *in, char *out) {
     } else if (3 == in[0]) {
         strcpy(out, "Bounty");
     } else {
+        PRINTF("Invalid network");
         THROW(0x6a80);
     }
 }
 
 bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
     // Make sure we don't get called with more data than we can fit on the extra data field.
-    if (data_length > MAX_NORMAL_TX_DATA_LENGTH) THROW(0x6a80);
+    if (data_length > MAX_NORMAL_TX_DATA_LENGTH) {
+        PRINTF("Extra data too long");
+        THROW(0x6a80);
+    }
 
     if (data == NULL || data_length == 0) {
         // empty string
@@ -213,7 +223,10 @@ bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
 
 void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
     uint32_t validity_start_height, tx_data_htlc_creation_t *out) {
-    if (data == NULL || (data_length != 78 && data_length != 110)) THROW(0x6a80); // invalid data
+    if (data == NULL || (data_length != 78 && data_length != 110)) {
+        PRINTF("Invalid htlc data");
+        THROW(0x6a80);
+    }
 
     // Process refund address
     print_address(data, out->refund_address);
@@ -224,6 +237,7 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
         // Although the refund address can be any address, specifying a contract as refund address is not recommendable
         // because for the contract address there is no key that could create the required signature for the htlc refund
         // proof. Protect the user from this scenario, as far as we can detect it.
+        PRINTF("HTLC refund address should not be a contract");
         THROW(0x6a80);
     }
 
@@ -245,7 +259,8 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
             strcpy(out->hash_algorithm, "SHA-512");
             break;
         default:
-            // Invalid hash algorithm. Notably, ARGON2D is blacklisted for HTLCs.
+            // Invalid hash algorithm. Notably, ARGON2d is blacklisted for HTLCs.
+            PRINTF("Invalid hash algorithm or blacklisted ARGON2d");
             THROW(0x6a80);
     }
     out->is_using_sha256 = hash_algorithm == HASH_ALGORITHM_SHA256;
@@ -253,7 +268,10 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
     // Process hash root
     uint8_t hash_size = hash_algorithm == HASH_ALGORITHM_SHA512 ? 64 : 32;
     // Recheck data_length now that we know which size exactly it should have.
-    if (data_length != 46 + hash_size) THROW(0x6a80);
+    if (data_length != 46 + hash_size) {
+        PRINTF("Invalid htlc data length");
+        THROW(0x6a80);
+    }
     // Print the hash as hex. Note that %.*h is a non-standard format implemented by the ledger sdk for printing data
     // as hex (see os_printf.c).
     snprintf(out->hash_root, MIN(sizeof(out->hash_root), hash_size * 2 + 1), "%.*h", hash_size, data);
@@ -277,7 +295,10 @@ void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *s
     // could be refactored by allocating less variables by printing them directly or re-using variables, but at the cost
     // of less readable code.
 
-    if (data == NULL || (data_length != 24 && data_length != 36 && data_length != 44)) THROW(0x6a80); // invalid data
+    if (data == NULL || (data_length != 24 && data_length != 36 && data_length != 44)) {
+        PRINTF("Invalid vesting data");
+        THROW(0x6a80);
+    }
 
     // Process owner address
     print_address(data, out->owner_address);
@@ -288,6 +309,7 @@ void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *s
         // Although the owner address can be any address, specifying a contract as owner is not recommendable because
         // for the contract address there is no key that could create the required signature for the vesting proof.
         // Protect the user from this scenario, as far as we can detect it.
+        PRINTF("Vesting owner address should not be a contract");
         THROW(0x6a80);
     }
 
@@ -347,6 +369,7 @@ void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *s
             // blockchain and would lock funds for thousands to billions of years and is therefore a nonsense config
             // that we want to protect users from.
             // TODO re-evaluate this for Nimiq 2.0
+            PRINTF("Vesting steps exceed number of possible Nimiq blocks");
             THROW(0x9850);
         }
 
@@ -366,7 +389,10 @@ void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *s
 
         // period
         helper_uint64 = /* actual vesting step count */ helper_uint64 * step_block_count;
-        if (helper_uint64 + start_block > UINT32_MAX) THROW(0x9850);
+        if (helper_uint64 + start_block > UINT32_MAX) {
+            PRINTF("Vesting end exceeds number of possible Nimiq blocks");
+            THROW(0x9850);
+        }
         period = (uint32_t) helper_uint64;
 
         // remaining values for the standard total_locked_amount == tx_amount case
@@ -474,7 +500,10 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
 
     if (flags == 0) {
         // Normal transaction
-        if (recipient_type != ACCOUNT_TYPE_BASIC) THROW(0x6a80);
+        if (recipient_type != ACCOUNT_TYPE_BASIC) {
+            PRINTF("Recipient type must be basic for normal transactions");
+            THROW(0x6a80);
+        }
 
         txContent->transaction_type = TRANSACTION_TYPE_NORMAL;
 
@@ -500,11 +529,11 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
             parse_vesting_creation_data(data, data_length, sender, sender_type, value,
                 &txContent->type_specific.vesting_creation_tx);
         } else {
-            // Unsupported recipient type
+            PRINTF("Unsupported contract type");
             THROW(0x6a80);
         }
     } else {
-        // Unsupported flag
+        PRINTF("Unsupported flag");
         THROW(0x6a80);
     }
 }

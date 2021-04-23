@@ -635,6 +635,7 @@ uint8_t readBip32Path(uint8_t *dataBuffer, uint32_t *bip32Path) {
     uint8_t bip32PathLength = dataBuffer[0];
     dataBuffer += 1;
     if ((bip32PathLength < 0x01) || (bip32PathLength > MAX_BIP32_PATH)) {
+        PRINTF("Invalid bip32 path length");
         THROW(0x6a80);
     }
     uint8_t i;
@@ -649,9 +650,11 @@ uint8_t readBip32Path(uint8_t *dataBuffer, uint32_t *bip32Path) {
 void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLength, volatile unsigned int *flags, volatile unsigned int *tx) {
 
     if ((p1 != P1_SIGNATURE) && (p1 != P1_NO_SIGNATURE)) {
+        PRINTF("Invalid P1");
         THROW(0x6B00);
     }
     if ((p2 != P2_CONFIRM) && (p2 != P2_NO_CONFIRM)) {
+        PRINTF("Invalid P2");
         THROW(0x6B00);
     }
     ctx.req.pk.returnSignature = (p1 == P1_SIGNATURE);
@@ -666,6 +669,7 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
     if (ctx.req.pk.returnSignature) {
         msgLength = dataLength;
         if (msgLength > 32) {
+            PRINTF("Verification message to sign must not exceed 32 bytes");
             THROW(0x6a80);
         }
         os_memmove(msg, dataBuffer, msgLength);
@@ -709,9 +713,11 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
 void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLength, volatile unsigned int *flags, volatile unsigned int *tx) {
 
     if ((p1 != P1_FIRST) && (p1 != P1_MORE)) {
+        PRINTF("Invalid P1");
         THROW(0x6B00);
     }
     if ((p2 != P2_LAST) && (p2 != P2_MORE)) {
+        PRINTF("Invalid P2");
         THROW(0x6B00);
     }
 
@@ -724,6 +730,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
         // read raw tx data
         ctx.req.tx.rawTxLength = dataLength;
         if (dataLength > MAX_RAW_TX) {
+            PRINTF("Transaction too long");
             THROW(0x6700);
         }
         os_memmove(ctx.req.tx.rawTx, dataBuffer, dataLength);
@@ -732,6 +739,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
         uint32_t offset = ctx.req.tx.rawTxLength;
         ctx.req.tx.rawTxLength += dataLength;
         if (ctx.req.tx.rawTxLength > MAX_RAW_TX) {
+            PRINTF("Transaction too long");
             THROW(0x6700);
         }
         os_memmove(ctx.req.tx.rawTx+offset, dataBuffer, dataLength);
@@ -752,6 +760,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     } else if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_VESTING_CREATION) {
         transaction_flow = ux_transaction_vesting_creation_flow;
     } else {
+        PRINTF("Invalid transaction type");
         THROW(0x6a80);
     }
     ux_flow_init(0, transaction_flow, NULL);
@@ -769,10 +778,12 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
     BEGIN_TRY {
         TRY {
             if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+                PRINTF("Device locked");
                 THROW(0x6982);
             }
             if (G_io_apdu_buffer[OFFSET_CLA] != CLA) {
                 THROW(0x6e00);
+                PRINTF("Ivalid CLA");
             }
 
             ctx.u2fTimer = U2F_REQUEST_TIMEOUT;
@@ -798,6 +809,7 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
                 break;
 
             default:
+                PRINTF("Invalid instruction");
                 THROW(0x6D00);
                 break;
             }
@@ -859,6 +871,7 @@ void nimiq_main(void) {
                 // no apdu received, well, reset the session, and reset the
                 // bootloader configuration
                 if (rx == 0) {
+                    PRINTF("No APDU received");
                     THROW(0x6982);
                 }
 
