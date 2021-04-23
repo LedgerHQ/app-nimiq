@@ -53,7 +53,9 @@ uint32_t set_result_get_publicKey(void);
 #define OFFSET_LC 4
 #define OFFSET_CDATA 5
 
-#define MAX_RAW_TX 130
+// Max length for a transaction's serialized content (66 bytes excluding extra data) with max allowed data which is 64
+// bytes for a normal transaction or 110 bytes for a htlc creation (with hash algorithm Sha512)
+#define MAX_RAW_TX 176
 
 typedef struct publicKeyContext_t {
     cx_ecfp_public_key_t publicKey;
@@ -131,8 +133,9 @@ UX_FLOW(ux_idle_flow,
 
 //////////////////////////////////////////////////////////////////////
 
-// Transaction confirmation UI
-UX_STEP_NOCB(ux_transaction_flow_transaction_type_step,
+// Generic transaction confirmation UI steps
+UX_STEP_NOCB(
+    ux_transaction_generic_flow_transaction_type_step,
     pnn,
     {
         &C_icon_eye,
@@ -140,14 +143,14 @@ UX_STEP_NOCB(ux_transaction_flow_transaction_type_step,
         ctx.req.tx.content.transaction_type_label,
     });
 UX_STEP_NOCB(
-    ux_transaction_flow_amount_step,
+    ux_transaction_generic_flow_amount_step,
     paging,
     {
         "Amount",
         ctx.req.tx.content.value,
     });
 UX_OPTIONAL_STEP_NOCB(
-    ux_transaction_flow_fee_step,
+    ux_transaction_generic_flow_fee_step,
     paging,
     strcmp(ctx.req.tx.content.fee, "0 NIM") != 0,
     {
@@ -155,29 +158,14 @@ UX_OPTIONAL_STEP_NOCB(
         ctx.req.tx.content.fee,
     });
 UX_STEP_NOCB(
-    ux_transaction_flow_recipient_step,
-    paging,
-    {
-        "Recipient",
-        ctx.req.tx.content.recipient,
-    });
-UX_OPTIONAL_STEP_NOCB(
-    ux_transaction_flow_data_step,
-    paging,
-    ctx.req.tx.content.transaction_type != TRANSACTION_TYPE_CASHLINK && strlen(ctx.req.tx.content.extra_data),
-    {
-        "Data",
-        ctx.req.tx.content.extra_data,
-    });
-UX_STEP_NOCB(
-    ux_transaction_flow_network_step,
+    ux_transaction_generic_flow_network_step,
     paging,
     {
         "Network",
         ctx.req.tx.content.network,
     });
 UX_STEP_CB(
-    ux_transaction_flow_approve_step,
+    ux_transaction_generic_flow_approve_step,
     pbb,
     io_seproxyhal_touch_tx_ok(),
     {
@@ -186,22 +174,153 @@ UX_STEP_CB(
         "and send",
     });
 UX_STEP_CB(
-    ux_transaction_flow_reject_step,
+    ux_transaction_generic_flow_reject_step,
     pb,
     io_seproxyhal_touch_tx_cancel(),
     {
         &C_icon_crossmark,
         "Reject",
     });
-UX_FLOW(ux_transaction_flow,
-    &ux_transaction_flow_transaction_type_step,
-    &ux_transaction_flow_amount_step,
-    &ux_transaction_flow_fee_step, // optional
-    &ux_transaction_flow_recipient_step,
-    &ux_transaction_flow_data_step, // optional
-    &ux_transaction_flow_network_step,
-    &ux_transaction_flow_approve_step,
-    &ux_transaction_flow_reject_step
+
+//////////////////////////////////////////////////////////////////////
+
+// Normal, non contract creation transaction specific UI steps
+UX_STEP_NOCB(
+    ux_transaction_normal_flow_recipient_step,
+    paging,
+    {
+        "Recipient",
+        ctx.req.tx.content.type_specific.normal_tx.recipient,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_transaction_normal_flow_data_step,
+    paging,
+    strlen(ctx.req.tx.content.type_specific.normal_tx.extra_data),
+    {
+        "Data",
+        ctx.req.tx.content.type_specific.normal_tx.extra_data,
+    });
+
+UX_FLOW(ux_transaction_normal_flow,
+    &ux_transaction_generic_flow_transaction_type_step,
+    &ux_transaction_generic_flow_amount_step,
+    &ux_transaction_generic_flow_fee_step, // optional
+    &ux_transaction_normal_flow_recipient_step,
+    &ux_transaction_normal_flow_data_step, // optional
+    &ux_transaction_generic_flow_network_step,
+    &ux_transaction_generic_flow_approve_step,
+    &ux_transaction_generic_flow_reject_step
+);
+
+//////////////////////////////////////////////////////////////////////
+
+// HTLC creation specific UI
+// As HTLCs are quite technical, we try to not display the less relevant information to the user.
+// Considerations for which data can be safely skipped under which circumstances:
+// - transaction recipient address (not to be confused with the htlc recipient address, also called redeem address):
+//   The recipient address for the contract creation must be the contract address which is deterministically calculated
+//   from the other transaction parameters. Any transaction with a different recipient address than the expected address
+//   is rejected by the Nimiq network which does therefore not need to be displayed or checked.
+// - htlc refund address (also called htlc sender; not to be confused with the transaction sender):
+//   If the refund address equals the transaction sender, we omit display because then the funds can be refunded to
+//   where they came from, which is an address of a BasicAccount or MultiSig under (partial) control of this Ledger.
+//   Note that any other address under the control of this Ledger could also be whitelisted, but currently the refund
+//   address being equal to the transaction sender is the normal case in our current use cases and whitelisting other
+//   Ledger addresses would require transmitting the refund address key path with the request, such that we can verify
+//   that the address is one under control of this Ledger.
+// - hash algorithm:
+//   As the user confirms the hash root, an attacker trying to let the user create a htlc with the wrong hash algorithm
+//   would need to know the pre-image for the hash root for the specified algorithm to be able to gain access to the
+//   funds which is close to impossible unless he's the legitimate recipient anyways who specified the confirmed hash
+//   root. The worst that can happen, is that the funds are locked until the timeout at which point they can be redeemed
+//   by the refund address owner. To avoid that the refund address owner as attacker could take advantage of making it
+//   impossible for the redeem address owner to redeem the funds, we skip the hash algorithm display only if the refund
+//   address is our address (see above). As an additional restriction, we also skip the display of the hash algorithm
+//   only if it's sha256 which is the commonly used hash algorithm and if the funds are not locked for a long time.
+// - hash count (here called hash steps):
+//   Specifying a lower hash count than the actual intended hash count allows the htlc redeem address owner as attacker
+//   to redeem more funds per pre-image step than intended. However, if the user's machine creating the manipulated
+//   transaction to be signed on the Ledger is compromised, also usually the htlc secret (unhashed pre-image) which is
+//   usually on the same machine is compromised such that the hash count doesn't matter anymore. I.e. if the htlc secret
+//   is compromised, the hash count yields no protection of the funds anymore.
+//   Specifying a higher hash count than the intended one effectively locks part of the funds for the redeem address
+//   owner until they become available to the refund address owner after the timeout. To avoid that the refund address
+//   owner as attacker could take advantage of blocking funds to the redeem address owner, we skip the display of the
+//   hash count only if the refund address is our address (see above). Additionally, to avoid that funds are potentially
+//   locked via a higher hash count for a long time, we only skip the display for short timeouts. However, as blocking
+//   the funds requires a higher hash count than the actual one, for 1, the lowest possible hash count, we never have to
+//   display it.
+// - timeout (here called htlc expiry block):
+//   The timeout specifies for how long funds will be locked if not redeemed until they are refundable. As short
+//   timeouts (which should be the case for most practically used htlcs) are favorable for the user if the refund
+//   address is his, we don't display short timeouts. To avoid that another refund address owner as attacker could take
+//   advantage of a short or already passed timeout, we skip the timeout display only if the refund address is our
+//   address (see above).
+UX_STEP_NOCB(
+    ux_htlc_creation_flow_redeem_address_step,
+    paging,
+    {
+        "HTLC Recipient",
+        ctx.req.tx.content.type_specific.htlc_creation_tx.redeem_address,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_htlc_creation_flow_refund_address_step,
+    paging,
+    !ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address,
+    {
+        "Refund to",
+        ctx.req.tx.content.type_specific.htlc_creation_tx.refund_address,
+    });
+UX_STEP_NOCB(
+    ux_htlc_creation_flow_hash_root_step,
+    paging,
+    {
+        "Hashed Secret", // more user friendly label for hash root
+        ctx.req.tx.content.type_specific.htlc_creation_tx.hash_root,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_htlc_creation_flow_hash_algorithm_step,
+    paging,
+    !ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address
+        || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_timing_out_soon
+        || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_using_sha256,
+    {
+        "Hash Algorithm",
+        ctx.req.tx.content.type_specific.htlc_creation_tx.hash_algorithm,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_htlc_creation_flow_hash_count_step,
+    paging,
+    strcmp(ctx.req.tx.content.type_specific.htlc_creation_tx.hash_count, "1") != 0
+        && (!ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address
+        || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_timing_out_soon),
+    {
+        "Hash Steps", // more user friendly label for hash count
+        ctx.req.tx.content.type_specific.htlc_creation_tx.hash_count,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_htlc_creation_flow_timeout_step,
+    paging,
+    !ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address
+        || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_timing_out_soon,
+    {
+        "HTLC Expiry Block", // more user friendly label for timeout
+        ctx.req.tx.content.type_specific.htlc_creation_tx.timeout,
+    });
+
+UX_FLOW(ux_transaction_htlc_creation_flow,
+    &ux_transaction_generic_flow_transaction_type_step,
+    &ux_transaction_generic_flow_amount_step,
+    &ux_transaction_generic_flow_fee_step, // optional
+    &ux_htlc_creation_flow_redeem_address_step,
+    &ux_htlc_creation_flow_refund_address_step, // optional
+    &ux_htlc_creation_flow_hash_root_step,
+    &ux_htlc_creation_flow_hash_algorithm_step, // optional
+    &ux_htlc_creation_flow_hash_count_step, // optional
+    &ux_htlc_creation_flow_timeout_step, // optional
+    &ux_transaction_generic_flow_network_step,
+    &ux_transaction_generic_flow_approve_step,
+    &ux_transaction_generic_flow_reject_step
 );
 
 //////////////////////////////////////////////////////////////////////
@@ -480,7 +599,15 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
     parseTx(ctx.req.tx.rawTx, &ctx.req.tx.content);
 
-    ux_flow_init(0, ux_transaction_flow, NULL);
+    const ux_flow_step_t* const * transaction_flow;
+    if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_NORMAL) {
+        transaction_flow = ux_transaction_normal_flow;
+    } else if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_HTLC_CREATION) {
+        transaction_flow = ux_transaction_htlc_creation_flow;
+    } else {
+        THROW(0x6a80);
+    }
+    ux_flow_init(0, transaction_flow, NULL);
 
     *flags |= IO_ASYNCH_REPLY;
 }

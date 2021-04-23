@@ -116,7 +116,7 @@ void print_public_key_as_address(uint8_t *in, char *out) {
     print_address(blake2b_hash, out);
 }
 
-void print_amount(uint64_t amount, char *asset, char *out) {
+void parse_amount(uint64_t amount, char *asset, char *out) {
     char buffer[AMOUNT_MAX_SIZE];
     uint64_t dVal = amount;
     int i, j;
@@ -164,7 +164,7 @@ void print_amount(uint64_t amount, char *asset, char *out) {
 
 }
 
-void print_network_id(uint8_t *in, char *out) {
+void parse_network_id(uint8_t *in, char *out) {
     if (42 == in[0]) {
         strcpy(out, "Main");
     } else if (1 == in[0]) {
@@ -178,37 +178,90 @@ void print_network_id(uint8_t *in, char *out) {
     }
 }
 
-void print_extra_data(uint8_t *in, char *out, uint16_t data_size) {
-    // Extra safety check: make sure we don't get called with more data than
-    // we can fit on the extra data field.
-    if (MAX_DATA_LENGTH < data_size) THROW(0x6a80);
+bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
+    // Make sure we don't get called with more data than we can fit on the extra data field.
+    if (data_length > MAX_NORMAL_TX_DATA_LENGTH) THROW(0x6a80);
+
+    if (data == NULL || data_length == 0) {
+        // empty string
+        strcpy(out, "");
+        return false;
+    }
 
     // Make sure that the string is always null-terminated
-    out[MAX_DATA_LENGTH] = '\0';
+    out[MAX_NORMAL_TX_DATA_LENGTH] = '\0';
 
     // Check if there is any non-printable ASCII characters
-    for (uint16_t i = 0; i < data_size; i++) {
-        if ((32 > in[i]) || (126 < in[i])) {
-            strcpy(out, "Binary data");
-            return;
+    for (uint16_t i = 0; i < data_length; i++) {
+        if ((data[i] < 32) || (data[i] > 126)) {
+            if (data_length == CASHLINK_MAGIC_NUMBER_LENGTH
+                && memcmp(data, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH) == 0) {
+                // Special Cashlink data which we do not want to display.
+                strcpy(out, "");
+                return true;
+            } else {
+                strcpy(out, "Binary data");
+                return false;
+            }
         }
     }
 
     // If there is not, copy the string to be displayed
-    strncpy(out, (char *) in, data_size);
+    strncpy(out, (char *) data, data_length);
+    return false;
 }
 
-void print_transaction_type(transaction_type_t transaction_type, char *out) {
-    switch (transaction_type) {
-        case TRANSACTION_TYPE_BASIC:
-            strcpy(out, "Transaction");
+void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint32_t validity_start_height,
+    tx_data_htlc_creation_t *out) {
+    if (data == NULL || (data_length != 78 && data_length != 110)) THROW(0x6a80); // invalid data
+
+    // Process refund address
+    print_address(data, out->refund_address);
+    out->is_refund_address_sender_address = memcmp(data, sender, 20) == 0;
+    data += 20;
+
+    // Process redeem address
+    print_address(data, out->redeem_address);
+    data += 20;
+
+    // Process hash algorithm
+    hash_algorithm_t hash_algorithm = *data;
+    data++;
+    switch (hash_algorithm) {
+        case HASH_ALGORITHM_BLAKE2B:
+            strcpy(out->hash_algorithm, "BLAKE2b");
             break;
-        case TRANSACTION_TYPE_CASHLINK:
-            strcpy(out, "Cashlink");
+        case HASH_ALGORITHM_SHA256:
+            strcpy(out->hash_algorithm, "SHA-256");
+            break;
+        case HASH_ALGORITHM_SHA512:
+            strcpy(out->hash_algorithm, "SHA-512");
             break;
         default:
+            // Invalid hash algorithm. Notably, ARGON2D is blacklisted for HTLCs.
             THROW(0x6a80);
     }
+    out->is_using_sha256 = hash_algorithm == HASH_ALGORITHM_SHA256;
+
+    // Process hash root
+    uint8_t hash_size = hash_algorithm == HASH_ALGORITHM_SHA512 ? 64 : 32;
+    // Recheck data_length now that we know which size exactly it should have.
+    if (data_length != 46 + hash_size) THROW(0x6a80);
+    // Print the hash as hex. Note that %.*h is a non-standard format implemented by the ledger sdk for printing data
+    // as hex (see os_printf.c).
+    snprintf(out->hash_root, MIN(sizeof(out->hash_root), hash_size * 2 + 1), "%.*h", hash_size, data);
+    data += hash_size;
+
+    // Process hash count
+    snprintf(out->hash_count, sizeof(out->hash_count), "%u", *data);
+    data++;
+
+    // Process timeout
+    uint32_t timeout = readUInt32Block(data);
+    data += 4;
+    snprintf(out->timeout, sizeof(out->timeout), "%u", timeout);
+    out->is_timing_out_soon = timeout < validity_start_height
+        || timeout - validity_start_height < HTLC_TIMEOUT_SOON_THRESHOLD;
 }
 
 uint16_t readUInt16Block(uint8_t *buffer) {
@@ -227,71 +280,80 @@ uint64_t readUInt64Block(uint8_t *buffer) {
 }
 
 void parseTx(uint8_t *buffer, txContent_t *txContent) {
-    // Process the data length field
+    // Read the extra data
     uint16_t data_length = readUInt16Block(buffer);
     PRINTF("data length: %u\n", data_length);
     buffer += 2;
+    uint8_t *data = data_length != 0 ? buffer : NULL;
+    buffer += data_length;
 
-    // Process the extra data field
-    if (0 == data_length) {
-        txContent->transaction_type = TRANSACTION_TYPE_BASIC;
-    } else if ((CASHLINK_MAGIC_NUMBER_LENGTH == data_length) &&
-     (0 == memcmp(buffer, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH))) {
-        txContent->transaction_type = TRANSACTION_TYPE_CASHLINK;
-        buffer += CASHLINK_MAGIC_NUMBER_LENGTH;
-    } else if (MAX_DATA_LENGTH >= data_length) {
-        txContent->transaction_type = TRANSACTION_TYPE_BASIC;
-
-        print_extra_data(buffer, txContent->extra_data, data_length);
-        PRINTF("data: %s\n", txContent->extra_data);
-        buffer += data_length;
-    } else {
-        THROW(0x6a80);
-    }
-
-    print_transaction_type(txContent->transaction_type, txContent->transaction_type_label);
-
-    // Process the sender field
-    buffer += 20; // Ignore our own address for Basic Tx (even with data)
-
-    // Process the sender account type field
+    // Read the sender
+    uint8_t *sender = buffer;
+    buffer += 20;
     uint8_t sender_type = buffer[0];
     buffer++;
-    if (0 != sender_type) THROW(0x6a80); // We only support basic accounts
+    if (sender_type != ACCOUNT_TYPE_BASIC) THROW(0x6a80); // We only support basic accounts
 
-    // Proccess the recipient field
-    print_address(buffer, txContent->recipient);
-    PRINTF("recipient: %s\n", txContent->recipient);
+    // Read the recipient
+    uint8_t *recipient = buffer;
     buffer += 20;
-
-    // Proccess the recipient account type field
     uint8_t recipient_type = buffer[0];
     buffer++;
-    if (0 != recipient_type) THROW(0x6a80); // We only support basic accounts
 
-    // Proccess the value field
+    // Process the value field
     uint64_t value = readUInt64Block(buffer);
     PRINTF("value: %lu\n", value);
-    print_amount(value, "NIM", txContent->value);
+    parse_amount(value, "NIM", txContent->value);
     PRINTF("amount: %s\n", txContent->value);
     buffer += 8;
 
-    // Proccess the fee field
+    // Process the fee field
     uint64_t fee = readUInt64Block(buffer);
     PRINTF("fee: %lu\n", fee);
-    print_amount(fee, "NIM", txContent->fee);
+    parse_amount(fee, "NIM", txContent->fee);
     PRINTF("fee amount: %s\n", txContent->fee);
     buffer += 8;
 
-    // Skip the validity start field
+    // Read the validity start height
+    uint32_t validity_start_height = readUInt32Block(buffer);
     buffer += 4;
 
-    // Proccess the validity start field
-    print_network_id(buffer, txContent->network);
+    // Process the network field
+    parse_network_id(buffer, txContent->network);
     buffer++;
 
-    // Proccess the flags field
+    // Process the flags field
     uint8_t flags = buffer[0];
     PRINTF("flags: %u\n", flags);
-    if (0 != flags) THROW(0x6a80); // No flags are supported yet
+
+    if (flags == 0) {
+        // Normal transaction
+        if (recipient_type != ACCOUNT_TYPE_BASIC) THROW(0x6a80);
+
+        txContent->transaction_type = TRANSACTION_TYPE_NORMAL;
+
+        bool is_cashlink = parse_normal_tx_data(data, data_length, txContent->type_specific.normal_tx.extra_data);
+        PRINTF("data: %s - is Cashlink: %d\n", txContent->type_specific.normal_tx.extra_data, is_cashlink);
+
+        strcpy(txContent->transaction_type_label, is_cashlink ? "Cashlink" : "Transaction");
+
+        // Print the recipient address
+        // We're ignoring the sender, as it's not too relevant where the funds are coming from.
+        print_address(recipient, txContent->type_specific.normal_tx.recipient);
+    } else if (flags == TX_FLAG_CONTRACT_CREATION) {
+        // Note that we're ignoring the recipient for contract creation transactions as it must be the deterministically
+        // calculated contract address, otherwise it's an invalid transaction which is rejected by the network nodes.
+        if (recipient_type == ACCOUNT_TYPE_HTLC) {
+            txContent->transaction_type = TRANSACTION_TYPE_HTLC_CREATION;
+            strcpy(txContent->transaction_type_label, "HTLC / Swap");
+            parse_htlc_creation_data(data, data_length, sender, validity_start_height,
+                &txContent->type_specific.htlc_creation_tx);
+        } else {
+            // Unsupported recipient type
+            THROW(0x6a80);
+        }
+    } else {
+        // Unsupported flag
+        THROW(0x6a80);
+    }
 }
