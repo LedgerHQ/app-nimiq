@@ -44,10 +44,12 @@
 #define HTLC_TIMEOUT_SOON_THRESHOLD (60 * 24 * 31 * 2); // ~ 2 months at 1 minute block time
 
 #define ACCOUNT_TYPE_BASIC 0
+#define ACCOUNT_TYPE_VESTING 1
 #define ACCOUNT_TYPE_HTLC 2
 
 typedef enum {
     TRANSACTION_TYPE_NORMAL,
+    TRANSACTION_TYPE_VESTING_CREATION,
     TRANSACTION_TYPE_HTLC_CREATION,
 } transaction_type_t;
 
@@ -83,13 +85,33 @@ typedef struct {
 } tx_data_htlc_creation_t;
 
 typedef struct {
+    bool is_owner_address_sender_address;
+    bool is_multi_step;
+    char owner_address[45];
+    char start_block[11]; // any 32bit unsigned int
+    char period[18]; // any 32bit unsigned int + " blocks"
+    char step_count[11]; // any 32bit unsigned int
+    char step_block_count[18]; // any 32bit unsigned int + " blocks"
+    // Note: first_step_block_count, first_step_block, first_step_amount and pre_vested_amount are not all necessarily
+    // needed at the same time and could be moved into a union to save some memory. As however tx_data_htlc_creation_t
+    // in the txContent_t.type_specific union is bigger anyways, we currently don't have to do this optimization.
+    char first_step_block_count[18]; // any 32bit unsigned int + " blocks"
+    char first_step_block[11]; // any 32bit unsigned int
+    char step_amount[25];
+    char first_step_amount[25];
+    char last_step_amount[25];
+    char pre_vested_amount[25];
+} tx_data_vesting_creation_t;
+
+typedef struct {
     union {
         tx_data_normal_t normal_tx;
         tx_data_htlc_creation_t htlc_creation_tx;
+        tx_data_vesting_creation_t vesting_creation_tx;
     } type_specific;
 
     transaction_type_t transaction_type;
-    char transaction_type_label[12]; // "Transaction", "Cashlink" or "HTLC / Swap"
+    char transaction_type_label[12]; // "Transaction", "Cashlink", "HTLC / Swap" or "Vesting"
     char value[25];
     char fee[25];
     char network[12]; // "Main", "Test", "Development" or "Bounty"
@@ -109,6 +131,9 @@ bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out);
 
 void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint32_t validity_start_height,
     tx_data_htlc_creation_t *out);
+
+void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint64_t tx_amount,
+    tx_data_vesting_creation_t *out);
 
 uint16_t readUInt16Block(uint8_t *buffer);
 

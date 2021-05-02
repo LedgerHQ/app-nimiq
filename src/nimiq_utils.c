@@ -264,6 +264,139 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
         || timeout - validity_start_height < HTLC_TIMEOUT_SOON_THRESHOLD;
 }
 
+void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint64_t tx_amount,
+    tx_data_vesting_creation_t *out) {
+    // Note that this method could be quite heavy on the stack (depending on how well the compiler optimizes it). It
+    // could be refactored by allocating less variables by printing them directly or re-using variables, but at the cost
+    // of less readable code.
+
+    if (data == NULL || (data_length != 24 && data_length != 36 && data_length != 44)) THROW(0x6a80); // invalid data
+
+    // Process owner address
+    print_address(data, out->owner_address);
+    out->is_owner_address_sender_address = memcmp(data, sender, 20) == 0;
+    data += 20;
+
+    // Read vesting parameters from data, depending on what is specified, and assign default values otherwise
+    uint32_t start_block = 0;
+    uint32_t step_block_count;
+    uint64_t step_amount = tx_amount;
+    uint64_t total_locked_amount = tx_amount;
+    if (data_length == 24) {
+        step_block_count = readUInt32Block(data);
+        data += 4;
+    } else { // data_length == 36 || data_length == 44
+        start_block = readUInt32Block(data);
+        data += 4;
+        step_block_count = readUInt32Block(data);
+        data += 4;
+        step_amount = readUInt64Block(data);
+        data += 8;
+
+        if (data_length == 44) {
+            total_locked_amount = readUInt64Block(data);
+            data += 8;
+        }
+    }
+
+    // Translate into more user friendly information for display
+    uint32_t step_count;
+    uint32_t period;
+    uint32_t first_step_block_count;
+    uint64_t first_step_amount;
+    uint64_t last_step_amount;
+    uint64_t pre_vested_amount;
+    uint64_t helper_uint64;
+    if (!step_block_count || !step_amount) {
+        // Special case in vesting contracts where all funds are immediately vested and total_locked_amount is ignored.
+        // Set / overwrite all parameters accordingly. Also checked separately to avoid division by zero in other cases.
+        start_block = 0;
+        step_block_count = 0;
+        step_amount = tx_amount;
+        total_locked_amount = 0;
+
+        step_count = 0;
+        period = 0;
+        first_step_block_count = 0;
+        first_step_amount = tx_amount;
+        last_step_amount = tx_amount;
+        pre_vested_amount = tx_amount;
+    } else {
+        // Normal case. Set so far undefined variables for user friendly information.
+
+        // Actual vesting step count, potentially including steps that do not actually unlock real contract funds if
+        // total_locked_amount > tx_amount
+        helper_uint64 = (total_locked_amount / step_amount) + /* round up */ !!(total_locked_amount % step_amount);
+        if (helper_uint64 > UINT32_MAX) {
+            // While this is theoretically possible in valid vesting contracts, for example for total_locked_amount ==
+            // MAX_SAFE_INTEGER and step_amount == 1, this exceeds the currently supported number of blocks of the Nimiq
+            // blockchain and would lock funds for thousands to billions of years and is therefore a nonsense config
+            // that we want to protect users from.
+            // TODO re-evaluate this for Nimiq 2.0
+            THROW(0x9850);
+        }
+
+        // step_count
+        if (total_locked_amount <= tx_amount) {
+            // Each vesting step actually unlocks user funds.
+            step_count = (uint32_t) helper_uint64;
+        } else {
+            // The specified locked amount is higher than the actual contract amount, i.e. additional steps need
+            // to pass to vest the virtual, excess locked amount until the actual amount starts getting vested.
+            // Only count steps that actually unlock funds, subtracting steps that entirely only vest the virtual,
+            // excess locked amount.
+            // Note that (total_locked_amount - tx_amount) / step_amount is smaller than helper_uint64 and there is no
+            // risk of overflowing.
+            step_count = ((uint32_t) helper_uint64) - (total_locked_amount - tx_amount) / step_amount;
+        }
+
+        // period
+        helper_uint64 = /* actual vesting step count */ helper_uint64 * step_block_count;
+        if (helper_uint64 + start_block > UINT32_MAX) THROW(0x9850);
+        period = (uint32_t) helper_uint64;
+
+        // remaining values for the standard total_locked_amount == tx_amount case
+        first_step_block_count = step_block_count;
+        first_step_amount = step_amount;
+        last_step_amount = total_locked_amount % step_amount ? total_locked_amount % step_amount : step_amount;
+        pre_vested_amount = 0;
+
+        // adaptions for total_locked_amount != tx_amount
+        if (tx_amount > total_locked_amount) {
+            // Not actually the entire contract amount is locked, i.e. some amount is pre-vested.
+            pre_vested_amount = tx_amount - total_locked_amount;
+        } else if (tx_amount < total_locked_amount) {
+            // An additional, virtual, excess locked amount of total_locked_amount - tx_amount needs to be vested before
+            // the actual contract funds start getting vested.
+            // As we do not include steps that entirely only vest the locked excess amount in our step count and
+            // consider the step at which the first actual funds get unlocked as our first step, calculate the blocks
+            // that need to pass for the actual first funds to become available.
+            // This is guaranteed to not overflow as also the entire period was checked to fit an uint32.
+            first_step_block_count = step_block_count // blocks for the step that actually unlocks the first funds
+                + ((total_locked_amount - tx_amount) / step_amount) * step_block_count; // blocks for excess steps
+            // As the first step that unlocks actual funds can also be partly filled by the excess amount, calculate how
+            // much of the actual funds is actually unlocked.
+            first_step_amount = step_amount - ((total_locked_amount - tx_amount) % step_amount);
+        }
+    }
+
+    // Print data
+    out->is_multi_step = step_count > 1;
+    snprintf(out->start_block, sizeof(out->start_block), "%u", start_block);
+    snprintf(out->period, sizeof(out->period), "%u block%c", period, period != 1 ? 's' : '\0');
+    snprintf(out->step_count, sizeof(out->step_count), "%u", step_count);
+    snprintf(out->step_block_count, sizeof(out->step_block_count), "%u block%c", step_block_count,
+        step_block_count != 1 ? 's' : '\0');
+    snprintf(out->first_step_block_count, sizeof(out->first_step_block_count), "%u block%c", first_step_block_count,
+        first_step_block_count != 1 ? 's' : '\0');
+    snprintf(out->first_step_block, sizeof(out->first_step_block), "%u",
+        start_block + first_step_block_count); // guaranteed to not overflow as also start_block + period <= UINT32_MAX
+    parse_amount(step_amount, "NIM", out->step_amount);
+    parse_amount(first_step_amount, "NIM", out->first_step_amount);
+    parse_amount(last_step_amount, "NIM", out->last_step_amount);
+    parse_amount(pre_vested_amount, "NIM", out->pre_vested_amount);
+}
+
 uint16_t readUInt16Block(uint8_t *buffer) {
     return buffer[1] + (buffer[0] << 8);
 }
@@ -348,6 +481,11 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
             strcpy(txContent->transaction_type_label, "HTLC / Swap");
             parse_htlc_creation_data(data, data_length, sender, validity_start_height,
                 &txContent->type_specific.htlc_creation_tx);
+        } else if (recipient_type == ACCOUNT_TYPE_VESTING) {
+            txContent->transaction_type = TRANSACTION_TYPE_VESTING_CREATION;
+            strcpy(txContent->transaction_type_label, "Vesting");
+            parse_vesting_creation_data(data, data_length, sender, value,
+                &txContent->type_specific.vesting_creation_tx);
         } else {
             // Unsupported recipient type
             THROW(0x6a80);

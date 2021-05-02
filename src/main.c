@@ -54,7 +54,8 @@ uint32_t set_result_get_publicKey(void);
 #define OFFSET_CDATA 5
 
 // Max length for a transaction's serialized content (66 bytes excluding extra data) with max allowed data which is 64
-// bytes for a normal transaction or 110 bytes for a htlc creation (with hash algorithm Sha512)
+// bytes for a normal transaction, 44 bytes for a vesting contract creation or 110 bytes for a htlc creation (with hash
+// algorithm Sha512)
 #define MAX_RAW_TX 176
 
 typedef struct publicKeyContext_t {
@@ -318,6 +319,148 @@ UX_FLOW(ux_transaction_htlc_creation_flow,
     &ux_htlc_creation_flow_hash_algorithm_step, // optional
     &ux_htlc_creation_flow_hash_count_step, // optional
     &ux_htlc_creation_flow_timeout_step, // optional
+    &ux_transaction_generic_flow_network_step,
+    &ux_transaction_generic_flow_approve_step,
+    &ux_transaction_generic_flow_reject_step
+);
+
+//////////////////////////////////////////////////////////////////////
+
+// Vesting Contract Creation specific UI
+// Other than for HTLCs we generally do not try to skip less relevant data as vesting contracts are only rarely created
+// and all parameters are similarly important. However, depending on the specific vesting contract parameters, some data
+// is redundant. Specifically, we have the following optimizations:
+// - vesting owner:
+//   Display of the vesting owner address is skipped if it equals the transaction sender address.
+// - for 0 steps (all funds are pre-vested):
+//   We only show the info about the pre-vested amount and skip all other data.
+// - for 1 step (all funds unlock at a specific block):
+//   We show a special entry with the vesting block. Additionally, the step for a pre-vested amount might be shown. All
+//   other info is redundant and skipped.
+// - for 2 steps:
+//   If first step amount and last step amount differ from regular step amount, do not display what would be the regular
+//   step amount as all steps differ from that.
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_owner_address_step,
+    paging,
+    !ctx.req.tx.content.type_specific.vesting_creation_tx.is_owner_address_sender_address,
+    {
+        "Vesting Owner",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.owner_address,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_single_vesting_block_step, // simplified ui for step_count == 1 case
+    paging,
+    strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.step_count, "1") == 0,
+    {
+        "Vested at Block",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_block,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_start_block_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step,
+    {
+        "Vesting Start Block",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.start_block,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_period_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step,
+    {
+        "Vesting Period",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.period,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_step_count_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step,
+    {
+        "Vesting Steps",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.step_count,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_step_block_count_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step,
+    {
+        "Blocks Per Step",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.step_block_count,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_first_step_block_count_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+        // is different from regular step block count
+        && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_block_count,
+            ctx.req.tx.content.type_specific.vesting_creation_tx.step_block_count) != 0,
+    {
+        "First Step",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_block_count,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_step_amount_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+        // skip if step_count == 2 and both steps differ from what would be the regular step amount
+        && !(
+            strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.step_count, "2") == 0
+                && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_amount,
+                    ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0
+                && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.last_step_amount,
+                    ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0
+        ),
+    {
+        "Vested per Step",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_first_step_amount_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+        // is different from regular step amount
+        && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_amount,
+            ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0,
+    {
+        "First Step",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_amount,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_last_step_amount_step,
+    paging,
+    ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+        // is different from regular step amount
+        && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.last_step_amount,
+            ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0,
+    {
+        "Last Step",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.last_step_amount,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_vesting_creation_flow_pre_vested_amount_step,
+    paging,
+    strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.pre_vested_amount, "0 NIM") != 0,
+    {
+        "Pre-Vested",
+        ctx.req.tx.content.type_specific.vesting_creation_tx.pre_vested_amount,
+    });
+
+UX_FLOW(ux_transaction_vesting_creation_flow,
+    &ux_transaction_generic_flow_transaction_type_step,
+    &ux_transaction_generic_flow_amount_step,
+    &ux_transaction_generic_flow_fee_step, // optional
+    &ux_vesting_creation_flow_owner_address_step, // optional
+    &ux_vesting_creation_flow_single_vesting_block_step, // optional
+    &ux_vesting_creation_flow_start_block_step, // optional
+    &ux_vesting_creation_flow_period_step, // optional
+    &ux_vesting_creation_flow_step_count_step, // optional
+    &ux_vesting_creation_flow_step_block_count_step, // optional
+    &ux_vesting_creation_flow_first_step_block_count_step, // optional
+    &ux_vesting_creation_flow_step_amount_step, // optional
+    &ux_vesting_creation_flow_first_step_amount_step, // optional
+    &ux_vesting_creation_flow_last_step_amount_step, // optional
+    &ux_vesting_creation_flow_pre_vested_amount_step, // optional
     &ux_transaction_generic_flow_network_step,
     &ux_transaction_generic_flow_approve_step,
     &ux_transaction_generic_flow_reject_step
@@ -604,6 +747,8 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
         transaction_flow = ux_transaction_normal_flow;
     } else if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_HTLC_CREATION) {
         transaction_flow = ux_transaction_htlc_creation_flow;
+    } else if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_VESTING_CREATION) {
+        transaction_flow = ux_transaction_vesting_creation_flow;
     } else {
         THROW(0x6a80);
     }
