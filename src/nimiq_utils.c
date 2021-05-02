@@ -211,14 +211,21 @@ bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
     return false;
 }
 
-void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint32_t validity_start_height,
-    tx_data_htlc_creation_t *out) {
+void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
+    uint32_t validity_start_height, tx_data_htlc_creation_t *out) {
     if (data == NULL || (data_length != 78 && data_length != 110)) THROW(0x6a80); // invalid data
 
     // Process refund address
     print_address(data, out->refund_address);
     out->is_refund_address_sender_address = memcmp(data, sender, 20) == 0;
     data += 20;
+
+    if (out->is_refund_address_sender_address && sender_type != ACCOUNT_TYPE_BASIC) {
+        // Although the refund address can be any address, specifying a contract as refund address is not recommendable
+        // because for the contract address there is no key that could create the required signature for the htlc refund
+        // proof. Protect the user from this scenario, as far as we can detect it.
+        THROW(0x6a80);
+    }
 
     // Process redeem address
     print_address(data, out->redeem_address);
@@ -264,8 +271,8 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
         || timeout - validity_start_height < HTLC_TIMEOUT_SOON_THRESHOLD;
 }
 
-void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint64_t tx_amount,
-    tx_data_vesting_creation_t *out) {
+void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
+    uint64_t tx_amount, tx_data_vesting_creation_t *out) {
     // Note that this method could be quite heavy on the stack (depending on how well the compiler optimizes it). It
     // could be refactored by allocating less variables by printing them directly or re-using variables, but at the cost
     // of less readable code.
@@ -276,6 +283,13 @@ void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *s
     print_address(data, out->owner_address);
     out->is_owner_address_sender_address = memcmp(data, sender, 20) == 0;
     data += 20;
+
+    if (out->is_owner_address_sender_address && sender_type != ACCOUNT_TYPE_BASIC) {
+        // Although the owner address can be any address, specifying a contract as owner is not recommendable because
+        // for the contract address there is no key that could create the required signature for the vesting proof.
+        // Protect the user from this scenario, as far as we can detect it.
+        THROW(0x6a80);
+    }
 
     // Read vesting parameters from data, depending on what is specified, and assign default values otherwise
     uint32_t start_block = 0;
@@ -425,7 +439,6 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
     buffer += 20;
     uint8_t sender_type = buffer[0];
     buffer++;
-    if (sender_type != ACCOUNT_TYPE_BASIC) THROW(0x6a80); // We only support basic accounts
 
     // Read the recipient
     uint8_t *recipient = buffer;
@@ -479,12 +492,12 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
         if (recipient_type == ACCOUNT_TYPE_HTLC) {
             txContent->transaction_type = TRANSACTION_TYPE_HTLC_CREATION;
             strcpy(txContent->transaction_type_label, "HTLC / Swap");
-            parse_htlc_creation_data(data, data_length, sender, validity_start_height,
+            parse_htlc_creation_data(data, data_length, sender, sender_type, validity_start_height,
                 &txContent->type_specific.htlc_creation_tx);
         } else if (recipient_type == ACCOUNT_TYPE_VESTING) {
             txContent->transaction_type = TRANSACTION_TYPE_VESTING_CREATION;
             strcpy(txContent->transaction_type_label, "Vesting");
-            parse_vesting_creation_data(data, data_length, sender, value,
+            parse_vesting_creation_data(data, data_length, sender, sender_type, value,
                 &txContent->type_specific.vesting_creation_tx);
         } else {
             // Unsupported recipient type

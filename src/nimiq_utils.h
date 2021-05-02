@@ -43,9 +43,11 @@
 //  reduced, thus ui steps skipped for short timeouts will be displayed even though we could skip them.
 #define HTLC_TIMEOUT_SOON_THRESHOLD (60 * 24 * 31 * 2); // ~ 2 months at 1 minute block time
 
-#define ACCOUNT_TYPE_BASIC 0
-#define ACCOUNT_TYPE_VESTING 1
-#define ACCOUNT_TYPE_HTLC 2
+typedef enum {
+    ACCOUNT_TYPE_BASIC = 0,
+    ACCOUNT_TYPE_VESTING = 1,
+    ACCOUNT_TYPE_HTLC = 2,
+} account_type_t;
 
 typedef enum {
     TRANSACTION_TYPE_NORMAL,
@@ -129,11 +131,11 @@ void parse_network_id(uint8_t *in, char *out);
 
 bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out);
 
-void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint32_t validity_start_height,
-    tx_data_htlc_creation_t *out);
+void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
+    uint32_t validity_start_height, tx_data_htlc_creation_t *out);
 
-void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, uint64_t tx_amount,
-    tx_data_vesting_creation_t *out);
+void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
+    uint64_t tx_amount, tx_data_vesting_creation_t *out);
 
 uint16_t readUInt16Block(uint8_t *buffer);
 

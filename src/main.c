@@ -546,7 +546,9 @@ unsigned int io_seproxyhal_touch_tx_ok() {
     cx_ecfp_init_private_key(CX_CURVE_Ed25519, privateKeyData, 32, &privateKey);
     os_memset(privateKeyData, 0, sizeof(privateKeyData));
 
-    // sign hash
+    // Sign transaction.
+    // Note that we only generate the signature here. It's the calling library's responsibility to build an appropriate
+    // signature proof or contract proof out of this signature, depending on the sender type.
 #if CX_APILEVEL >= 8
     tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, NULL, 0, G_io_apdu_buffer, sizeof(G_io_apdu_buffer), NULL);
 #else
