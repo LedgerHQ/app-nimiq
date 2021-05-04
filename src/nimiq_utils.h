@@ -30,8 +30,12 @@
 #include "os.h"
 #endif // TEST
 
-#define MAX_NORMAL_TX_DATA_LENGTH 64
-#define MAX_NORMAL_TX_DATA_STRING_LENGTH (MAX_NORMAL_TX_DATA_LENGTH + 1) // One more byte for the NULL string terminator
+#define LENGTH_NORMAL_TX_DATA_MAX 64
+#define STRING_LENGTH_NORMAL_TX_DATA_MAX (LENGTH_NORMAL_TX_DATA_MAX + 1) // One more byte for the NULL string terminator
+#define STRING_LENGTH_UINT8 4 // "0" to "255" (any uint8)
+#define STRING_LENGTH_UINT32 11 // "0" to "4294967295" (any uint32)
+#define STRING_LENGTH_NIM_AMOUNT 22 // "0" to "90071992547.40991 NIM" (MAX_SAFE_INTEGER Luna in NIM)
+#define STRING_LENGTH_USER_FRIENDLY_ADDRESS 45
 
 #define CASHLINK_MAGIC_NUMBER "\x00\x82\x80\x92\x87"
 #define CASHLINK_MAGIC_NUMBER_LENGTH 5
@@ -70,39 +74,39 @@ typedef enum {
 // into issues with low memory, we should switch to printing data on demand in the flow ux steps' init methods.
 
 typedef struct {
-    char recipient[45];
-    char extra_data[MAX_NORMAL_TX_DATA_STRING_LENGTH];
+    char recipient[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
+    char extra_data[STRING_LENGTH_NORMAL_TX_DATA_MAX];
 } tx_data_normal_t;
 
 typedef struct {
     bool is_refund_address_sender_address;
     bool is_timing_out_soon;
     bool is_using_sha256;
-    char redeem_address[45];
-    char refund_address[45];
+    char redeem_address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
+    char refund_address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
     char hash_root[129]; // hash root can be up to 64 bytes; displayed as hex + string terminator requires 129 chars
     char hash_algorithm[8]; // "BLAKE2b", "SHA-256" or "SHA-512"
-    char hash_count[4]; // "0" to "255"
-    char timeout[11]; // any 32bit unsigned int
+    char hash_count[STRING_LENGTH_UINT8];
+    char timeout[STRING_LENGTH_UINT32];
 } tx_data_htlc_creation_t;
 
 typedef struct {
     bool is_owner_address_sender_address;
     bool is_multi_step;
-    char owner_address[45];
-    char start_block[11]; // any 32bit unsigned int
-    char period[18]; // any 32bit unsigned int + " blocks"
-    char step_count[11]; // any 32bit unsigned int
-    char step_block_count[18]; // any 32bit unsigned int + " blocks"
-    // Note: first_step_block_count, first_step_block, first_step_amount and pre_vested_amount are not all necessarily
-    // needed at the same time and could be moved into a union to save some memory. As however tx_data_htlc_creation_t
-    // in the txContent_t.type_specific union is bigger anyways, we currently don't have to do this optimization.
-    char first_step_block_count[18]; // any 32bit unsigned int + " blocks"
-    char first_step_block[11]; // any 32bit unsigned int
-    char step_amount[25];
-    char first_step_amount[25];
-    char last_step_amount[25];
-    char pre_vested_amount[25];
+    char owner_address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
+    char start_block[STRING_LENGTH_UINT32];
+    char period[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
+    char step_count[STRING_LENGTH_UINT32];
+    char step_block_count[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
+    // Note: first_step_block_count, first_step_block, first_step_amount and pre_vested_amount are not all needed at the
+    // same time and could therefore be moved into a union to save some memory. As however tx_data_htlc_creation_t in
+    // the txContent_t.type_specific union is bigger anyways, we currently don't have to do this optimization.
+    char first_step_block_count[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
+    char first_step_block[STRING_LENGTH_UINT32];
+    char step_amount[STRING_LENGTH_NIM_AMOUNT];
+    char first_step_amount[STRING_LENGTH_NIM_AMOUNT];
+    char last_step_amount[STRING_LENGTH_NIM_AMOUNT];
+    char pre_vested_amount[STRING_LENGTH_NIM_AMOUNT];
 } tx_data_vesting_creation_t;
 
 typedef struct {
@@ -114,8 +118,8 @@ typedef struct {
 
     transaction_type_t transaction_type;
     char transaction_type_label[12]; // "Transaction", "Cashlink", "HTLC / Swap" or "Vesting"
-    char value[25];
-    char fee[25];
+    char value[STRING_LENGTH_NIM_AMOUNT];
+    char fee[STRING_LENGTH_NIM_AMOUNT];
     char network[12]; // "Main", "Test", "Development" or "Bounty"
 } txContent_t;
 

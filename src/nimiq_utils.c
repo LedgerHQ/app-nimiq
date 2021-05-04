@@ -187,7 +187,7 @@ void parse_network_id(uint8_t *in, char *out) {
 
 bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
     // Make sure we don't get called with more data than we can fit on the extra data field.
-    if (data_length > MAX_NORMAL_TX_DATA_LENGTH) {
+    if (data_length > LENGTH_NORMAL_TX_DATA_MAX) {
         PRINTF("Extra data too long");
         THROW(0x6a80);
     }
@@ -199,7 +199,7 @@ bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
     }
 
     // Make sure that the string is always null-terminated
-    out[MAX_NORMAL_TX_DATA_LENGTH] = '\0';
+    out[LENGTH_NORMAL_TX_DATA_MAX] = '\0';
 
     // Check if there is any non-printable ASCII characters
     for (uint16_t i = 0; i < data_length; i++) {
