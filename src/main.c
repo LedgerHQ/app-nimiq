@@ -105,7 +105,7 @@ unsigned int io_seproxyhal_touch_address_ok(const bagl_element_t *e);
 unsigned int io_seproxyhal_touch_address_cancel(const bagl_element_t *e);
 void ui_idle(void);
 
-#ifdef TARGET_NANOX
+#if defined(TARGET_NANOX) || defined(TARGET_NANOS2)
 #include "ux.h"
 ux_state_t G_ux;
 bolos_ux_params_t G_ux_params;
@@ -1616,18 +1616,18 @@ const bagl_element_t ui_approve_tx_nanos[] = {
 };
 #endif // #if defined(TARGET_NANOS)
 
-#if defined(TARGET_NANOX)
+#if defined(TARGET_NANOX) || defined(TARGET_NANOS2)
 //////////////////////////////////////////////////////////////////////
 UX_STEP_NOCB(
-    ux_idle_flow_1_step, 
-    nn, 
+    ux_idle_flow_1_step,
+    nn,
     {
       "Application",
       "is ready",
     });
 UX_STEP_NOCB(
-    ux_idle_flow_3_step, 
-    bn, 
+    ux_idle_flow_3_step,
+    bn,
     {
       "Version",
       APPVERSION,
@@ -1653,8 +1653,8 @@ void display_next_state(bool is_upper_border);
 char caption[18];
 char details[MAX_DATA_STRING_LENGTH];
 
-UX_STEP_NOCB(ux_confirm_flow_1_step, 
-    pnn, 
+UX_STEP_NOCB(ux_confirm_flow_1_step,
+    pnn,
     {
       &C_icon_eye,
       "Confirm",
@@ -1668,7 +1668,7 @@ UX_STEP_INIT(
         display_next_state(true);
     });
 UX_STEP_NOCB(
-    ux_variable_display, 
+    ux_variable_display,
     bnnn_paging,
     {
       .title = caption,
@@ -1682,8 +1682,8 @@ UX_STEP_INIT(
         display_next_state(false);
     });
 UX_STEP_VALID(
-    ux_confirm_flow_5_step, 
-    pbb, 
+    ux_confirm_flow_5_step,
+    pbb,
     io_seproxyhal_touch_tx_ok(NULL),
     {
       &C_icon_validate_14,
@@ -1691,8 +1691,8 @@ UX_STEP_VALID(
       "and send",
     });
 UX_STEP_VALID(
-    ux_confirm_flow_6_step, 
-    pb, 
+    ux_confirm_flow_6_step,
+    pb,
     io_seproxyhal_touch_tx_cancel(NULL),
     {
       &C_icon_crossmark,
@@ -1746,7 +1746,7 @@ void set_state_data() {
             strncpy(caption, "Validity Start", sizeof(caption));
             strncpy(details, ctx.req.tx.content.validity_start, sizeof(details));
             break;
-        
+
         case 5:
             strncpy(caption, "Network", sizeof(caption));
             strncpy(details, ctx.req.tx.content.network, sizeof(details));
@@ -1757,7 +1757,7 @@ void set_state_data() {
             memcpy(caption, details1Caption, sizeof(caption));
             memcpy(details, ctx.req.tx.content.details1, MAX_DATA_STRING_LENGTH);
             break;
-        
+
         case 7:
             // set details 2
             memcpy(caption, details2Caption, sizeof(caption));
@@ -1775,7 +1775,7 @@ void set_state_data() {
             memcpy(caption, details4Caption, sizeof(caption));
             memcpy(details, ctx.req.tx.content.details4, MAX_DATA_STRING_LENGTH);
             break;
-    
+
         default:
             THROW(0x6666);
             break;
@@ -1823,29 +1823,29 @@ void display_next_state(bool is_upper_border){
             }
         }
     }
-    
+
 }
 
 //////////////////////////////////////////////////////////////////////
 
 UX_STEP_NOCB(
-    ux_display_public_flow_5_step, 
-    bnnn_paging, 
+    ux_display_public_flow_5_step,
+    bnnn_paging,
     {
       .title = "Address",
       .text = ctx.req.pk.address,
     });
 UX_STEP_VALID(
-    ux_display_public_flow_6_step, 
-    pb, 
+    ux_display_public_flow_6_step,
+    pb,
     io_seproxyhal_touch_address_ok(NULL),
     {
       &C_icon_validate_14,
       "Approve",
     });
 UX_STEP_VALID(
-    ux_display_public_flow_7_step, 
-    pb, 
+    ux_display_public_flow_7_step,
+    pb,
     io_seproxyhal_touch_address_cancel(NULL),
     {
       &C_icon_crossmark,
@@ -1871,7 +1871,7 @@ void ui_idle(void) {
     UX_DISPLAY(ui_idle_blue, NULL);
 #elif defined(TARGET_NANOS)
     UX_MENU_DISPLAY(0, menu_main, NULL);
-#elif defined(TARGET_NANOX)
+#elif defined(TARGET_NANOX) || defined(TARGET_NANOS2)
     // reserve a display stack slot if none yet
     if(G_ux.stack_count == 0) {
         ux_stack_push();
@@ -2131,7 +2131,7 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
         ux_step = 0;
         ux_step_count = 2;
         UX_DISPLAY(ui_address_nanos, ui_address_prepro);
-#elif defined(TARGET_NANOX)
+#elif defined(TARGET_NANOX) || defined(TARGET_NANOS2)
         ux_flow_init(0, ux_display_public_flow, NULL);
 #endif // #if TARGET
         *flags |= IO_ASYNCH_REPLY;
@@ -2210,7 +2210,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     ux_step = 0;
     ux_step_count = countSteps(ctx.req.tx.content.operationType);
     UX_DISPLAY(ui_approve_tx_nanos, ui_tx_approval_prepro);
-#elif defined(TARGET_NANOX)
+#elif defined(TARGET_NANOX) || defined(TARGET_NANOS2)
     num_data = countSteps(ctx.req.tx.content.operationType);
     current_data_index = 0;
     current_state = OUT_OF_BORDERS;
@@ -2464,10 +2464,10 @@ __attribute__((section(".boot"))) int main(void) {
             TRY {
                 io_seproxyhal_init();
 
-#ifdef TARGET_NANOX
+#ifdef HAVE_BLE
                 // grab the current plane mode setting
                 G_io_app.plane_mode = os_setting_get(OS_SETTING_PLANEMODE, NULL, 0);
-#endif // TARGET_NANOX
+#endif // HAVE_BLE
 
                 if (N_storage.initialized != 0x01) {
                     internalStorage_t storage;
