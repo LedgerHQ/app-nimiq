@@ -284,6 +284,8 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
     // Process timeout
     uint32_t timeout = readUInt32Block(data);
     data += 4;
+    // note: not %lu (for unsigned long int) because int is already 32bit on ledgers (see "Memory Alignment" in Ledger
+    // docu), additionally Ledger's own implementation of sprintf does not support %lu (see os_printf.c)
     snprintf(out->timeout, sizeof(out->timeout), "%u", timeout);
     out->is_timing_out_soon = timeout < validity_start_height
         || timeout - validity_start_height < HTLC_TIMEOUT_SOON_THRESHOLD;
@@ -422,6 +424,8 @@ void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *s
 
     // Print data
     out->is_multi_step = step_count > 1;
+    // note: not %lu (for unsigned long int) because int is already 32bit on ledgers (see "Memory Alignment" in Ledger
+    // docu), additionally Ledger's own implementation of sprintf does not support %lu (see os_printf.c)
     snprintf(out->start_block, sizeof(out->start_block), "%u", start_block);
     snprintf(out->period, sizeof(out->period), "%u block%c", period, period != 1 ? 's' : '\0');
     snprintf(out->step_count, sizeof(out->step_count), "%u", step_count);

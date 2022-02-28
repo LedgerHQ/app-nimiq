@@ -34,9 +34,15 @@ uint32_t set_result_get_publicKey(void);
 #define MAX_BIP32_PATH 10
 
 #define CLA 0xE0
+// Defined instructions.
+// Note that some values are disallowed as instructions (odd numbers, 6X, 9X) or predefined by ISO7816-3, see
+// https://cardwerk.com/smart-card-standard-iso7816-4-section-5-basic-organizations/#:~:text=Table%2010%20%E2%80%93-,Invalid%20INS%20codes,-b8%20b7%20b6
+// or https://de.wikipedia.org/wiki/Application_Protocol_Data_Unit#command_APDU
 #define INS_GET_PUBLIC_KEY 0x02
 #define INS_SIGN_TX 0x04
+// #define INS_GET_APP_CONFIGURATION 0x06 // was removed, but still listing it here to avoid assigning the same value
 #define INS_KEEP_ALIVE 0x08
+#define INS_SIGN_MESSAGE 0x0A
 #define P1_NO_SIGNATURE 0x00
 #define P1_SIGNATURE 0x01
 #define P2_NO_CONFIRM 0x00
@@ -73,10 +79,23 @@ typedef struct transactionContext_t {
     txContent_t content;
 } transactionContext_t;
 
+typedef struct messageSigningContext_t {
+    cx_sha256_t messageHashContext;
+    cx_sha256_t prefixedMessageHashContext;
+    uint32_t bip32Path[MAX_BIP32_PATH];
+    // nimiq supports signing data of arbitrary length, but for now we restrict the length in the ledger app to uint32_t
+    uint32_t messageLength;
+    uint32_t processedMessageLength;
+    char messageHash[65]; // 32 byte hash printed as hex + string terminator
+    uint8_t bip32PathLength;
+    uint8_t flags; // for future use
+} messageSigningContext_t;
+
 typedef struct {
     union {
         publicKeyContext_t pk;
         transactionContext_t tx;
+        messageSigningContext_t msg;
     } req;
     uint16_t u2fTimer;
 } generalContext_t;
@@ -85,6 +104,8 @@ generalContext_t ctx;
 
 unsigned int io_seproxyhal_touch_tx_ok();
 unsigned int io_seproxyhal_touch_tx_cancel();
+unsigned int io_seproxyhal_touch_message_ok();
+unsigned int io_seproxyhal_touch_message_cancel();
 unsigned int io_seproxyhal_touch_address_ok();
 unsigned int io_seproxyhal_touch_address_cancel();
 void ui_idle(void);
@@ -468,6 +489,49 @@ UX_FLOW(ux_transaction_vesting_creation_flow,
 
 //////////////////////////////////////////////////////////////////////
 
+// Message signing UI
+UX_STEP_NOCB(
+    ux_message_flow_intro_step,
+    pnn,
+    {
+        &C_icon_certificate,
+        "Sign",
+        "message",
+    });
+UX_STEP_NOCB(
+    ux_message_flow_hash_step,
+    paging,
+    {
+        "Message Hash",
+        ctx.req.msg.messageHash,
+    });
+UX_STEP_CB(
+    ux_message_flow_approve_step,
+    pbb,
+    io_seproxyhal_touch_message_ok(),
+    {
+        &C_icon_validate_14,
+        "Sign",
+        "message",
+    });
+UX_STEP_CB(
+    ux_message_flow_reject_step,
+    pb,
+    io_seproxyhal_touch_message_cancel(),
+    {
+        &C_icon_crossmark,
+        "Reject",
+    });
+
+UX_FLOW(ux_message_flow,
+    &ux_message_flow_intro_step,
+    &ux_message_flow_hash_step,
+    &ux_message_flow_approve_step,
+    &ux_message_flow_reject_step
+);
+
+//////////////////////////////////////////////////////////////////////
+
 // Address confirmation UI
 UX_STEP_NOCB(
     ux_public_key_flow_address_step,
@@ -498,7 +562,6 @@ UX_FLOW(ux_public_key_flow,
     &ux_public_key_flow_approve_step,
     &ux_public_key_flow_reject_step
 );
-
 
 //////////////////////////////////////////////////////////////////////
 
@@ -569,6 +632,66 @@ unsigned int io_seproxyhal_touch_tx_ok() {
 }
 
 unsigned int io_seproxyhal_touch_tx_cancel() {
+    G_io_apdu_buffer[0] = 0x69;
+    G_io_apdu_buffer[1] = 0x85;
+
+    // Send back the response, do not restart the event loop
+    io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
+
+    // Display back the original UX
+    ui_idle();
+    return 0; // do not redraw the widget
+}
+
+unsigned int io_seproxyhal_touch_message_ok() {
+    uint32_t tx = 0;
+
+    // initialize private key
+    uint8_t privateKeyDataOrHash[32];
+    cx_ecfp_private_key_t privateKey;
+    os_perso_derive_node_bip32_seed_key(/* mode */ HDW_ED25519_SLIP10, /* curve */ CX_CURVE_Ed25519,
+        /* path */ ctx.req.msg.bip32Path, /* path length */ ctx.req.msg.bip32PathLength, /* out */ privateKeyDataOrHash,
+        /* chain */ NULL, /* seed key */ "ed25519 seed", /* seed key length */ 12);
+    cx_ecfp_init_private_key(/* curve */ CX_CURVE_Ed25519, /* raw key */ privateKeyDataOrHash,
+        /* key length */ sizeof(privateKeyDataOrHash), /* out */ &privateKey);
+    // buffer will be overwritten by hash anyways, but just as a good practice we're still clearing the raw private key
+    os_memset(privateKeyDataOrHash, 0, sizeof(privateKeyDataOrHash));
+
+    // finalize message hash
+    cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ CX_LAST, /* data */ NULL, /* data length */ 0,
+        /* output */ privateKeyDataOrHash, /* output length */ sizeof(privateKeyDataOrHash));
+
+    // Sign hashed message.
+    // As specified in https://datatracker.ietf.org/doc/html/rfc8032#section-5.1.6, we're using CX_SHA512 as internal
+    // hash algorithm for the ed25519 signature. Note that the passed message is a hash of length 32 against the
+    // requirement "The data length must be lesser than the curve size." (which is 32 for ed25519) described in the sdk
+    // documentation. But according to the specification, there are actually no length restrictions.
+    tx = cx_eddsa_sign(
+        &privateKey,
+        /* mode, unused for cx_eddsa_sign */ 0,
+        /* internal hash algorithm */ CX_SHA512,
+        /* input data */ privateKeyDataOrHash,
+        /* input length */ sizeof(privateKeyDataOrHash),
+        /* context, unused for cx_eddsa_sign */ NULL,
+        /* context length */ 0,
+        /* output */ G_io_apdu_buffer,
+        /* max output length */ sizeof(G_io_apdu_buffer) - /* for sw */ 2,
+        /* info, unused for cx_eddsa_sign */ NULL
+    );
+    os_memset(&privateKey, 0, sizeof(privateKey));
+
+    G_io_apdu_buffer[tx++] = 0x90;
+    G_io_apdu_buffer[tx++] = 0x00;
+
+    // Send back the response, do not restart the event loop
+    io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, tx);
+
+    // Display back the original UX
+    ui_idle();
+    return 0; // do not redraw the widget
+}
+
+unsigned int io_seproxyhal_touch_message_cancel() {
     G_io_apdu_buffer[0] = 0x69;
     G_io_apdu_buffer[1] = 0x85;
 
@@ -768,6 +891,96 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     *flags |= IO_ASYNCH_REPLY;
 }
 
+void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLength, volatile unsigned int *flags,
+    volatile unsigned int *tx) {
+    if ((p1 != P1_FIRST) && (p1 != P1_MORE)) {
+        PRINTF("Invalid P1");
+        THROW(0x6B00);
+    }
+    if ((p2 != P2_LAST) && (p2 != P2_MORE)) {
+        PRINTF("Invalid P2");
+        THROW(0x6B00);
+    }
+
+    if (p1 == P1_FIRST) {
+        // read the bip32 path
+        ctx.req.msg.bip32PathLength = readBip32Path(dataBuffer, ctx.req.msg.bip32Path);
+        const uint8_t bip32PathEncodedLength = /* bip path length encoded in uint8 */ 1
+            + /* bip path entries, each uint32 */ ctx.req.msg.bip32PathLength * 4;
+        if (dataLength < bip32PathEncodedLength + /* flags */ 1 + /* message length encoded in uint32 */ 4) {
+            // we expect the first chunk to at least contain the bip path, flags and encoded message length completely
+            PRINTF("First message signing chunk too short");
+            THROW(0x6700);
+        }
+        dataBuffer += bip32PathEncodedLength;
+        dataLength -= bip32PathEncodedLength;
+
+        ctx.req.msg.flags = dataBuffer[0];
+        dataBuffer++;
+        dataLength--;
+
+        ctx.req.msg.messageLength = readUInt32Block(dataBuffer);
+        dataBuffer += 4;
+        dataLength -= 4;
+
+        ctx.req.msg.processedMessageLength = 0;
+        // See lcx_sha256.h and lcx_hash.h in Ledger sdk
+        cx_sha256_init(&ctx.req.msg.messageHashContext);
+        cx_sha256_init(&ctx.req.msg.prefixedMessageHashContext);
+
+        // Nimiq signed messages add a prefix to the message and then hash both together.
+        // This makes the calculated signature recognisable as a Nimiq specific signature and prevents signing arbitrary
+        // arbitrary data (e.g. a transaction). This implementation is equivalent to the handling in Key.signMessage in
+        // Nimiq's Keyguard.
+        cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ 0, /* data */ MESSAGE_SIGNING_PREFIX,
+            /* data length */ strlen(MESSAGE_SIGNING_PREFIX), /* output */ NULL, /* output length */ 0);
+        // add data length printed as decimal number to the message prefix
+        char decimalMessageLength[STRING_LENGTH_UINT32];
+        // note: not %lu (for unsigned long int) because int is already 32bit on ledgers (see "Memory Alignment" in
+        // Ledger docu), additionally Ledger's own implementation of sprintf does not support %lu (see os_printf.c)
+        snprintf(decimalMessageLength, sizeof(decimalMessageLength), "%u", ctx.req.msg.messageLength);
+        cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ 0, /* data */ decimalMessageLength,
+            /* data length */ strlen(decimalMessageLength), /* output */ NULL, /* output length */ 0);
+    }
+
+    if (dataLength != 0) {
+        if ((unsigned long)ctx.req.msg.processedMessageLength + dataLength > ctx.req.msg.messageLength) {
+            PRINTF("Message too long");
+            THROW(0x6700);
+        }
+        // hash message bytes
+        cx_hash(&ctx.req.msg.messageHashContext.header, /* flags */ 0, /* data */ dataBuffer,
+            /* data length */ dataLength, /* output */ NULL, /* output length */ 0);
+        cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ 0, /* data */ dataBuffer,
+            /* data length */ dataLength, /* output */ NULL, /* output length */ 0);
+        ctx.req.msg.processedMessageLength += dataLength; // guaranteed to not overflow due to the length check above
+        dataBuffer += dataLength;
+        dataLength -= dataLength;
+    }
+
+    if (p2 == P2_MORE) {
+        // Processing of current chunk finished; send success status word
+        THROW(0x9000);
+    }
+
+    // Display sign request to user
+    if (ctx.req.msg.processedMessageLength != ctx.req.msg.messageLength) {
+        PRINTF("Invalid length to sign");
+        THROW(0x6700);
+    }
+    uint8_t hashBytes[32];
+    cx_hash(&ctx.req.msg.messageHashContext.header, /* flags */ CX_LAST, /* data */ NULL, /* data length */ 0,
+        /* output */ hashBytes, /* output length */ sizeof(hashBytes));
+    // not using Ledger's proprietary %.*H snprintf format, as it's non-standard
+    // (see https://github.com/LedgerHQ/app-bitcoin/pull/200/files)
+    for (uint8_t i = 0; i < sizeof(hashBytes); i++) {
+        snprintf(ctx.req.msg.messageHash + i * 2, sizeof(ctx.req.msg.messageHash) - i * 2, "%02X", hashBytes[i]);
+    }
+    ux_flow_init(0, ux_message_flow, NULL);
+
+    *flags |= IO_ASYNCH_REPLY;
+}
+
 void handleKeepAlive(volatile unsigned int *flags) {
     *flags |= IO_ASYNCH_REPLY;
 }
@@ -801,11 +1014,20 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
                 handleSignTx(G_io_apdu_buffer[OFFSET_P1],
                              G_io_apdu_buffer[OFFSET_P2],
                              G_io_apdu_buffer + OFFSET_CDATA,
-                             G_io_apdu_buffer[OFFSET_LC], flags, tx);
+                             G_io_apdu_buffer[OFFSET_LC],
+                             flags, tx);
                 break;
 
             case INS_KEEP_ALIVE:
                 handleKeepAlive(flags);
+                break;
+
+            case INS_SIGN_MESSAGE:
+                handleSignMessage(G_io_apdu_buffer[OFFSET_P1],
+                                  G_io_apdu_buffer[OFFSET_P2],
+                                  G_io_apdu_buffer + OFFSET_CDATA,
+                                  G_io_apdu_buffer[OFFSET_LC],
+                                  flags, tx);
                 break;
 
             default:

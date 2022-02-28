@@ -40,6 +40,8 @@
 #define CASHLINK_MAGIC_NUMBER "\x00\x82\x80\x92\x87"
 #define CASHLINK_MAGIC_NUMBER_LENGTH 5
 
+#define MESSAGE_SIGNING_PREFIX "\x16Nimiq Signed Message:\n" // 0x16 (decimal 22) is the prefix length
+
 #define TX_FLAG_CONTRACT_CREATION 0x1
 
 // TODO The threshold for short timeouts should be re-evaluated for Nimiq 2.0. However, keeping the current threshold is
