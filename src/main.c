@@ -29,8 +29,6 @@
 
 unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
-uint32_t set_result_get_publicKey(void);
-
 #define MAX_BIP32_PATH 10
 
 #define CLA 0xE0
@@ -63,6 +61,13 @@ uint32_t set_result_get_publicKey(void);
 // bytes for a normal transaction, 44 bytes for a vesting contract creation or 110 bytes for a htlc creation (with hash
 // algorithm Sha512)
 #define MAX_RAW_TX 176
+// Limit printable message length as Nano S has only about 4kB of ram total, used for global vars and stack.
+// Additionally, the paging ui displays only ~16 chars per page on Nano S. Printed message buffer length dimension
+// chosen such that it can hold the printed uint32 message length (STRING_LENGTH_UINT32 (11) bytes), the message printed
+// as hash (32 byte hash as hex + string terminator = 65 bytes), ascii (1 char per byte + string terminator) or hex
+// (2 char per byte + string terminator).
+#define MAX_PRINTABLE_MESSAGE_LENGTH 160 // 10+ pages ascii or 20 pages hex
+#define PRINTED_MESSAGE_BUFFER_LENGTH (MAX_PRINTABLE_MESSAGE_LENGTH * 2 + 1)
 
 typedef struct publicKeyContext_t {
     cx_ecfp_public_key_t publicKey;
@@ -80,13 +85,27 @@ typedef struct transactionContext_t {
 } transactionContext_t;
 
 typedef struct messageSigningContext_t {
-    cx_sha256_t messageHashContext;
-    cx_sha256_t prefixedMessageHashContext;
     uint32_t bip32Path[MAX_BIP32_PATH];
     // nimiq supports signing data of arbitrary length, but for now we restrict the length in the ledger app to uint32_t
     uint32_t messageLength;
     uint32_t processedMessageLength;
-    char messageHash[65]; // 32 byte hash printed as hex + string terminator
+    union {
+        // the memory is specifically aligned such that messageHashContext and prefixedMessageHashContext do not overlap
+        // with messageHash and prefxedMessageHash, see _Static_assert in handleSignMessage.
+        struct {
+            cx_sha256_t messageHashContext;
+            cx_sha256_t prefixedMessageHashContext;
+        } prepare;
+        struct {
+            message_display_type_t displayType;
+            char printedMessageLabel[13]; // "Message", "Message Hex" or "Message Hash" + string terminator
+            char printedMessage[PRINTED_MESSAGE_BUFFER_LENGTH];
+            uint8_t messageHash[32];
+            uint8_t prefixedMessageHash[32];
+        } confirm;
+    };
+    uint8_t printableMessage[MAX_PRINTABLE_MESSAGE_LENGTH];
+    bool isPrintableAscii;
     uint8_t bip32PathLength;
     uint8_t flags; // for future use
 } messageSigningContext_t;
@@ -108,7 +127,10 @@ unsigned int io_seproxyhal_touch_message_ok();
 unsigned int io_seproxyhal_touch_message_cancel();
 unsigned int io_seproxyhal_touch_address_ok();
 unsigned int io_seproxyhal_touch_address_cancel();
-void ui_idle(void);
+void ui_idle();
+void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay);
+uint32_t set_result_get_publicKey();
+
 
 ux_state_t G_ux;
 bolos_ux_params_t G_ux_params;
@@ -498,12 +520,82 @@ UX_STEP_NOCB(
         "Sign",
         "message",
     });
-UX_STEP_NOCB(
-    ux_message_flow_hash_step,
+UX_STEP_NOCB_INIT(
+    ux_message_flow_message_length_step,
     paging,
     {
-        "Message Hash",
-        ctx.req.msg.messageHash,
+        // note: not %lu (for unsigned long int) because int is already 32bit on ledgers (see "Memory Alignment" in
+        // Ledger docu), additionally Ledger's own implementation of sprintf does not support %lu (see os_printf.c)
+        snprintf(ctx.req.msg.confirm.printedMessage, sizeof(ctx.req.msg.confirm.printedMessage), "%u",
+            ctx.req.msg.messageLength);
+    },
+    {
+        "Message Length",
+        ctx.req.msg.confirm.printedMessage,
+    });
+UX_STEP_NOCB_INIT(
+    ux_message_flow_message_step,
+    paging,
+    {
+        // No error handling needed here. All data has already been verified in handleSignMessage
+        switch (ctx.req.msg.confirm.displayType) {
+            case MESSAGE_DISPLAY_TYPE_ASCII:
+                strcpy(ctx.req.msg.confirm.printedMessageLabel, "Message");
+                os_memmove(ctx.req.msg.confirm.printedMessage, ctx.req.msg.printableMessage, ctx.req.msg.messageLength);
+                ctx.req.msg.confirm.printedMessage[ctx.req.msg.messageLength] = '\0'; // string terminator
+                break;
+            case MESSAGE_DISPLAY_TYPE_HEX:
+                strcpy(ctx.req.msg.confirm.printedMessageLabel, "Message Hex");
+                print_hex(ctx.req.msg.printableMessage, ctx.req.msg.messageLength, ctx.req.msg.confirm.printedMessage,
+                    sizeof(ctx.req.msg.confirm.printedMessage));
+                break;
+            case MESSAGE_DISPLAY_TYPE_HASH:
+                strcpy(ctx.req.msg.confirm.printedMessageLabel, "Message Hash");
+                print_hex(ctx.req.msg.confirm.messageHash, sizeof(ctx.req.msg.confirm.messageHash),
+                    ctx.req.msg.confirm.printedMessage, sizeof(ctx.req.msg.confirm.printedMessage));
+                break;
+        }
+    },
+    {
+        ctx.req.msg.confirm.printedMessageLabel,
+        ctx.req.msg.confirm.printedMessage,
+    });
+UX_OPTIONAL_STEP_CB(
+    ux_message_flow_display_ascii_step,
+    pbb,
+    ctx.req.msg.isPrintableAscii && ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_ASCII,
+    {
+        ui_message_signing(MESSAGE_DISPLAY_TYPE_ASCII, true);
+    },
+    {
+        &C_icon_certificate,
+        "Display",
+        "as Ascii",
+    });
+UX_OPTIONAL_STEP_CB(
+    ux_message_flow_display_hex_step,
+    pbb,
+    ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
+        && ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_HEX,
+    {
+        ui_message_signing(MESSAGE_DISPLAY_TYPE_HEX, true);
+    },
+    {
+        &C_icon_certificate,
+        "Display",
+        "as Hex",
+    });
+UX_OPTIONAL_STEP_CB(
+    ux_message_flow_display_hash_step,
+    pbb,
+    ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_HASH,
+    {
+        ui_message_signing(MESSAGE_DISPLAY_TYPE_HASH, true);
+    },
+    {
+        &C_icon_certificate,
+        "Display",
+        "as Hash",
     });
 UX_STEP_CB(
     ux_message_flow_approve_step,
@@ -525,7 +617,11 @@ UX_STEP_CB(
 
 UX_FLOW(ux_message_flow,
     &ux_message_flow_intro_step,
-    &ux_message_flow_hash_step,
+    &ux_message_flow_message_length_step,
+    &ux_message_flow_message_step,
+    &ux_message_flow_display_ascii_step,
+    &ux_message_flow_display_hex_step,
+    &ux_message_flow_display_hash_step,
     &ux_message_flow_approve_step,
     &ux_message_flow_reject_step
 );
@@ -572,6 +668,11 @@ void ui_idle(void) {
         ux_stack_push();
     }
     ux_flow_init(0, ux_idle_flow, NULL);
+}
+
+void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
+    ctx.req.msg.confirm.displayType = messageDisplayType;
+    ux_flow_init(0, ux_message_flow, startAtMessageDisplay ? &ux_message_flow_message_step : NULL);
 }
 
 unsigned int io_seproxyhal_touch_address_ok() {
@@ -647,19 +748,14 @@ unsigned int io_seproxyhal_touch_message_ok() {
     uint32_t tx = 0;
 
     // initialize private key
-    uint8_t privateKeyDataOrHash[32];
+    uint8_t privateKeyData[32];
     cx_ecfp_private_key_t privateKey;
     os_perso_derive_node_bip32_seed_key(/* mode */ HDW_ED25519_SLIP10, /* curve */ CX_CURVE_Ed25519,
-        /* path */ ctx.req.msg.bip32Path, /* path length */ ctx.req.msg.bip32PathLength, /* out */ privateKeyDataOrHash,
+        /* path */ ctx.req.msg.bip32Path, /* path length */ ctx.req.msg.bip32PathLength, /* out */ privateKeyData,
         /* chain */ NULL, /* seed key */ "ed25519 seed", /* seed key length */ 12);
-    cx_ecfp_init_private_key(/* curve */ CX_CURVE_Ed25519, /* raw key */ privateKeyDataOrHash,
-        /* key length */ sizeof(privateKeyDataOrHash), /* out */ &privateKey);
-    // buffer will be overwritten by hash anyways, but just as a good practice we're still clearing the raw private key
-    os_memset(privateKeyDataOrHash, 0, sizeof(privateKeyDataOrHash));
-
-    // finalize message hash
-    cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ CX_LAST, /* data */ NULL, /* data length */ 0,
-        /* output */ privateKeyDataOrHash, /* output length */ sizeof(privateKeyDataOrHash));
+    cx_ecfp_init_private_key(/* curve */ CX_CURVE_Ed25519, /* raw key */ privateKeyData,
+        /* key length */ sizeof(privateKeyData), /* out */ &privateKey);
+    os_memset(privateKeyData, 0, sizeof(privateKeyData));
 
     // Sign hashed message.
     // As specified in https://datatracker.ietf.org/doc/html/rfc8032#section-5.1.6, we're using CX_SHA512 as internal
@@ -670,8 +766,8 @@ unsigned int io_seproxyhal_touch_message_ok() {
         &privateKey,
         /* mode, unused for cx_eddsa_sign */ 0,
         /* internal hash algorithm */ CX_SHA512,
-        /* input data */ privateKeyDataOrHash,
-        /* input length */ sizeof(privateKeyDataOrHash),
+        /* input data */ ctx.req.msg.confirm.prefixedMessageHash,
+        /* input length */ sizeof(ctx.req.msg.confirm.prefixedMessageHash),
         /* context, unused for cx_eddsa_sign */ NULL,
         /* context length */ 0,
         /* output */ G_io_apdu_buffer,
@@ -924,22 +1020,24 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
         dataLength -= 4;
 
         ctx.req.msg.processedMessageLength = 0;
+        ctx.req.msg.isPrintableAscii = ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH; // ascii-check later
         // See lcx_sha256.h and lcx_hash.h in Ledger sdk
-        cx_sha256_init(&ctx.req.msg.messageHashContext);
-        cx_sha256_init(&ctx.req.msg.prefixedMessageHashContext);
+        cx_sha256_init(&ctx.req.msg.prepare.messageHashContext);
+        cx_sha256_init(&ctx.req.msg.prepare.prefixedMessageHashContext);
 
         // Nimiq signed messages add a prefix to the message and then hash both together.
         // This makes the calculated signature recognisable as a Nimiq specific signature and prevents signing arbitrary
         // arbitrary data (e.g. a transaction). This implementation is equivalent to the handling in Key.signMessage in
         // Nimiq's Keyguard.
-        cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ 0, /* data */ MESSAGE_SIGNING_PREFIX,
-            /* data length */ strlen(MESSAGE_SIGNING_PREFIX), /* output */ NULL, /* output length */ 0);
+        cx_hash(&ctx.req.msg.prepare.prefixedMessageHashContext.header, /* flags */ 0,
+            /* data */ MESSAGE_SIGNING_PREFIX, /* data length */ strlen(MESSAGE_SIGNING_PREFIX), /* output */ NULL,
+            /* output length */ 0);
         // add data length printed as decimal number to the message prefix
         char decimalMessageLength[STRING_LENGTH_UINT32];
         // note: not %lu (for unsigned long int) because int is already 32bit on ledgers (see "Memory Alignment" in
         // Ledger docu), additionally Ledger's own implementation of sprintf does not support %lu (see os_printf.c)
         snprintf(decimalMessageLength, sizeof(decimalMessageLength), "%u", ctx.req.msg.messageLength);
-        cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ 0, /* data */ decimalMessageLength,
+        cx_hash(&ctx.req.msg.prepare.prefixedMessageHashContext.header, /* flags */ 0, /* data */ decimalMessageLength,
             /* data length */ strlen(decimalMessageLength), /* output */ NULL, /* output length */ 0);
     }
 
@@ -948,10 +1046,15 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
             PRINTF("Message too long");
             THROW(0x6700);
         }
+        // setup printable message
+        if (ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH) {
+            os_memmove(ctx.req.msg.printableMessage + ctx.req.msg.processedMessageLength, dataBuffer, dataLength);
+            ctx.req.msg.isPrintableAscii = ctx.req.msg.isPrintableAscii && isPrintableAscii(dataBuffer, dataLength);
+        }
         // hash message bytes
-        cx_hash(&ctx.req.msg.messageHashContext.header, /* flags */ 0, /* data */ dataBuffer,
+        cx_hash(&ctx.req.msg.prepare.messageHashContext.header, /* flags */ 0, /* data */ dataBuffer,
             /* data length */ dataLength, /* output */ NULL, /* output length */ 0);
-        cx_hash(&ctx.req.msg.prefixedMessageHashContext.header, /* flags */ 0, /* data */ dataBuffer,
+        cx_hash(&ctx.req.msg.prepare.prefixedMessageHashContext.header, /* flags */ 0, /* data */ dataBuffer,
             /* data length */ dataLength, /* output */ NULL, /* output length */ 0);
         ctx.req.msg.processedMessageLength += dataLength; // guaranteed to not overflow due to the length check above
         dataBuffer += dataLength;
@@ -963,20 +1066,26 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
         THROW(0x9000);
     }
 
-    // Display sign request to user
+    // Create hashes and request user to sign
     if (ctx.req.msg.processedMessageLength != ctx.req.msg.messageLength) {
         PRINTF("Invalid length to sign");
         THROW(0x6700);
     }
-    uint8_t hashBytes[32];
-    cx_hash(&ctx.req.msg.messageHashContext.header, /* flags */ CX_LAST, /* data */ NULL, /* data length */ 0,
-        /* output */ hashBytes, /* output length */ sizeof(hashBytes));
-    // not using Ledger's proprietary %.*H snprintf format, as it's non-standard
-    // (see https://github.com/LedgerHQ/app-bitcoin/pull/200/files)
-    for (uint8_t i = 0; i < sizeof(hashBytes); i++) {
-        snprintf(ctx.req.msg.messageHash + i * 2, sizeof(ctx.req.msg.messageHash) - i * 2, "%02X", hashBytes[i]);
-    }
-    ux_flow_init(0, ux_message_flow, NULL);
+    // We're sharing the memory between the hash contexts and the created hashes to reduce memory usage. Make sure that
+    // we're not overwriting the hash contexts while generating the hashes (which is also safe with the current cx_hash
+    // implementation but could break anytime) by checking whether it fits the yet unused memory allocated in front of
+    // the output messageHash and prefixedMessageHash. Note that this is a compile time assertion.
+    _Static_assert(
+        sizeof(ctx.req.msg.prepare.messageHashContext) + sizeof(ctx.req.msg.prepare.prefixedMessageHashContext)
+            < sizeof(ctx.req.msg.confirm.printedMessageLabel) + sizeof(ctx.req.msg.confirm.printedMessage),
+        "Hash context memory overlaps with output hash memory"
+    );
+    cx_hash(&ctx.req.msg.prepare.messageHashContext.header, /* flags */ CX_LAST, /* data */ NULL, /* data length */ 0,
+        /* output */ ctx.req.msg.confirm.messageHash, /* output length */ sizeof(ctx.req.msg.confirm.messageHash));
+    cx_hash(&ctx.req.msg.prepare.prefixedMessageHashContext.header, /* flags */ CX_LAST, /* data */ NULL,
+        /* data length */ 0, /* output */ ctx.req.msg.confirm.prefixedMessageHash,
+        /* output length */ sizeof(ctx.req.msg.confirm.prefixedMessageHash));
+    ui_message_signing(MESSAGE_DISPLAY_TYPE_HASH, false);
 
     *flags |= IO_ASYNCH_REPLY;
 }

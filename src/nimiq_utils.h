@@ -68,6 +68,12 @@ typedef enum {
     HASH_ALGORITHM_SHA512 = 4,
 } hash_algorithm_t;
 
+typedef enum {
+    MESSAGE_DISPLAY_TYPE_HASH,
+    MESSAGE_DISPLAY_TYPE_ASCII,
+    MESSAGE_DISPLAY_TYPE_HEX,
+} message_display_type_t;
+
 // Data printed for display.
 // Note that this does not include any information about where the funds are coming from (a regular account, htlc,
 // vesting contract, which address, ...) as this is not too relevant for the user and also not displayed by other apps
@@ -131,6 +137,8 @@ void print_address(uint8_t *in, char *out);
 
 void print_public_key_as_address(uint8_t *in, char *out);
 
+void print_hex(uint8_t *data, uint16_t dataLength, char *out, uint16_t outLength);
+
 void parse_amount(uint64_t amount, char *asset, char *out);
 
 void parse_network_id(uint8_t *in, char *out);
@@ -148,5 +156,7 @@ uint16_t readUInt16Block(uint8_t *buffer);
 uint32_t readUInt32Block(uint8_t *buffer);
 
 uint64_t readUInt64Block(uint8_t *buffer);
+
+bool isPrintableAscii(uint8_t *data, uint16_t dataLength);
 
 #endif // _NIMIQ_UTILS_H_

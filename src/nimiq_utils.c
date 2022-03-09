@@ -118,6 +118,19 @@ void print_public_key_as_address(uint8_t *in, char *out) {
     print_address(blake2b_hash, out);
 }
 
+void print_hex(uint8_t *data, uint16_t dataLength, char *out, uint16_t outLength) {
+    if (outLength < dataLength * 2 + 1) {
+        // does not fit 2 hex chars per byte + string terminator
+        PRINTF("print_hex: out buffer too small to fit hex");
+        THROW(0x6700);
+    }
+    // not using Ledger's proprietary %.*H snprintf format, as it's non-standard
+    // (see https://github.com/LedgerHQ/app-bitcoin/pull/200/files)
+    for (uint16_t i = 0; i < dataLength; i++) {
+        snprintf(out + i * 2, /* 2 hex chars + string terminator */ 3, "%02X", data[i]);
+    }
+}
+
 void parse_amount(uint64_t amount, char *asset, char *out) {
     char buffer[AMOUNT_MAX_SIZE];
     uint64_t dVal = amount;
@@ -201,19 +214,16 @@ bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
     // Make sure that the string is always null-terminated
     out[LENGTH_NORMAL_TX_DATA_MAX] = '\0';
 
+    // Check if it's the special Cashlink data which we do not want to display.
+    if (data_length == CASHLINK_MAGIC_NUMBER_LENGTH
+        && memcmp(data, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH) == 0) {
+        strcpy(out, "");
+        return true;
+    }
     // Check if there is any non-printable ASCII characters
-    for (uint16_t i = 0; i < data_length; i++) {
-        if ((data[i] < 32) || (data[i] > 126)) {
-            if (data_length == CASHLINK_MAGIC_NUMBER_LENGTH
-                && memcmp(data, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH) == 0) {
-                // Special Cashlink data which we do not want to display.
-                strcpy(out, "");
-                return true;
-            } else {
-                strcpy(out, "Binary data");
-                return false;
-            }
-        }
+    if (!isPrintableAscii(data, data_length)) {
+        strcpy(out, "Binary data");
+        return false;
     }
 
     // If there is not, copy the string to be displayed
@@ -540,4 +550,11 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
         PRINTF("Unsupported flag");
         THROW(0x6a80);
     }
+}
+
+bool isPrintableAscii(uint8_t *data, uint16_t dataLength) {
+    for (uint16_t i = 0; i < dataLength; i++) {
+        if ((data[i] < /* space */ 32) || (data[i] > /* tilde */ 126)) return false;
+    }
+    return true;
 }
