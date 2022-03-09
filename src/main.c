@@ -1085,7 +1085,15 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
     cx_hash(&ctx.req.msg.prepare.prefixedMessageHashContext.header, /* flags */ CX_LAST, /* data */ NULL,
         /* data length */ 0, /* output */ ctx.req.msg.confirm.prefixedMessageHash,
         /* output length */ sizeof(ctx.req.msg.confirm.prefixedMessageHash));
-    ui_message_signing(MESSAGE_DISPLAY_TYPE_HASH, false);
+    ui_message_signing(
+        (ctx.req.msg.flags & MESSAGE_FLAG_PREFER_DISPLAY_TYPE_ASCII) && ctx.req.msg.isPrintableAscii
+            ? MESSAGE_DISPLAY_TYPE_ASCII
+            : (ctx.req.msg.flags & MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX)
+                && ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
+                ? MESSAGE_DISPLAY_TYPE_HEX
+                : MESSAGE_DISPLAY_TYPE_HASH,
+        false
+    );
 
     *flags |= IO_ASYNCH_REPLY;
 }

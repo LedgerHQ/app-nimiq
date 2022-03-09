@@ -43,6 +43,8 @@
 #define MESSAGE_SIGNING_PREFIX "\x16Nimiq Signed Message:\n" // 0x16 (decimal 22) is the prefix length
 
 #define TX_FLAG_CONTRACT_CREATION 0x1
+#define MESSAGE_FLAG_PREFER_DISPLAY_TYPE_ASCII (0x1 << 0)
+#define MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX (0x1 << 1)
 
 // TODO The threshold for short timeouts should be re-evaluated for Nimiq 2.0. However, keeping the current threshold is
 //  no security risk at the time of switching to 2.0, as the threshold would be rather needed to be increased than
@@ -69,9 +71,9 @@ typedef enum {
 } hash_algorithm_t;
 
 typedef enum {
-    MESSAGE_DISPLAY_TYPE_HASH,
     MESSAGE_DISPLAY_TYPE_ASCII,
     MESSAGE_DISPLAY_TYPE_HEX,
+    MESSAGE_DISPLAY_TYPE_HASH,
 } message_display_type_t;
 
 // Data printed for display.
