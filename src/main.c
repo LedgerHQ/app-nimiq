@@ -570,7 +570,7 @@ UX_OPTIONAL_STEP_CB(
     {
         &C_icon_certificate,
         "Display",
-        "as Ascii",
+        "as Text",
     });
 UX_OPTIONAL_STEP_CB(
     ux_message_flow_display_hex_step,
