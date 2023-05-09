@@ -107,7 +107,7 @@ typedef struct messageSigningContext_t {
     uint8_t printableMessage[MAX_PRINTABLE_MESSAGE_LENGTH];
     bool isPrintableAscii;
     uint8_t bip32PathLength;
-    uint8_t flags; // for future use
+    uint8_t flags;
 } messageSigningContext_t;
 
 typedef struct {
@@ -762,6 +762,7 @@ unsigned int io_seproxyhal_touch_message_ok() {
     // hash algorithm for the ed25519 signature. Note that the passed message is a hash of length 32 against the
     // requirement "The data length must be lesser than the curve size." (which is 32 for ed25519) described in the sdk
     // documentation. But according to the specification, there are actually no length restrictions.
+    // The signature has a fixed size of 64 bytes which fits a single apdu response.
     tx = cx_eddsa_sign(
         &privateKey,
         /* mode, unused for cx_eddsa_sign */ 0,
@@ -1086,10 +1087,13 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
         /* data length */ 0, /* output */ ctx.req.msg.confirm.prefixedMessageHash,
         /* output length */ sizeof(ctx.req.msg.confirm.prefixedMessageHash));
     ui_message_signing(
-        (ctx.req.msg.flags & MESSAGE_FLAG_PREFER_DISPLAY_TYPE_ASCII) && ctx.req.msg.isPrintableAscii
+        // Depending on whether the data can be printed as ASCII or hex, default to ASCII, hex or hash display, unless
+        // a specific preference was provided. The user can still switch the display type during the confirmation.
+        ctx.req.msg.isPrintableAscii
+            && !(ctx.req.msg.flags & (MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX | MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH))
             ? MESSAGE_DISPLAY_TYPE_ASCII
-            : (ctx.req.msg.flags & MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX)
-                && ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
+            : ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
+                && !(ctx.req.msg.flags & MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH)
                 ? MESSAGE_DISPLAY_TYPE_HEX
                 : MESSAGE_DISPLAY_TYPE_HASH,
         false
