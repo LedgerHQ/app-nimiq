@@ -241,7 +241,7 @@ UX_OPTIONAL_STEP_NOCB(
     paging,
     strlen(ctx.req.tx.content.type_specific.normal_tx.extra_data),
     {
-        "Data",
+        ctx.req.tx.content.type_specific.normal_tx.extra_data_label,
         ctx.req.tx.content.type_specific.normal_tx.extra_data,
     });
 

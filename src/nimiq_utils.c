@@ -198,36 +198,38 @@ void parse_network_id(uint8_t *in, char *out) {
     }
 }
 
-bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out) {
+bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_t *out) {
     // Make sure we don't get called with more data than we can fit on the extra data field.
     if (data_length > LENGTH_NORMAL_TX_DATA_MAX) {
         PRINTF("Extra data too long");
         THROW(0x6a80);
     }
 
+    // initiate with empty string / empty data
+    strcpy(out->extra_data_label, "");
+    strcpy(out->extra_data, "");
+
     if (data == NULL || data_length == 0) {
-        // empty string
-        strcpy(out, "");
         return false;
     }
-
-    // Make sure that the string is always null-terminated
-    out[LENGTH_NORMAL_TX_DATA_MAX] = '\0';
 
     // Check if it's the special Cashlink data which we do not want to display.
     if (data_length == CASHLINK_MAGIC_NUMBER_LENGTH
         && memcmp(data, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH) == 0) {
-        strcpy(out, "");
         return true;
     }
     // Check if there is any non-printable ASCII characters
     if (!isPrintableAscii(data, data_length)) {
-        strcpy(out, "Binary data");
+        strcpy(out->extra_data_label, "Data Hex");
+        print_hex(data, data_length, out->extra_data, sizeof(out->extra_data));
         return false;
     }
 
     // If there is not, copy the string to be displayed
-    strncpy(out, (char *) data, data_length);
+    strcpy(out->extra_data_label, "Data");
+    strncpy(out->extra_data, (char *) data, data_length);
+    out->extra_data[data_length] = '\0'; // Make sure the string is terminated
+
     return false;
 }
 
@@ -521,7 +523,7 @@ void parseTx(uint8_t *buffer, txContent_t *txContent) {
 
         txContent->transaction_type = TRANSACTION_TYPE_NORMAL;
 
-        bool is_cashlink = parse_normal_tx_data(data, data_length, txContent->type_specific.normal_tx.extra_data);
+        bool is_cashlink = parse_normal_tx_data(data, data_length, &txContent->type_specific.normal_tx);
         PRINTF("data: %s - is Cashlink: %d\n", txContent->type_specific.normal_tx.extra_data, is_cashlink);
 
         strcpy(txContent->transaction_type_label, is_cashlink ? "Cashlink" : "Transaction");

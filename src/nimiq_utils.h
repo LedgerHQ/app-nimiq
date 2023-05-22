@@ -31,7 +31,8 @@
 #endif // TEST
 
 #define LENGTH_NORMAL_TX_DATA_MAX 64
-#define STRING_LENGTH_NORMAL_TX_DATA_MAX (LENGTH_NORMAL_TX_DATA_MAX + 1) // One more byte for the NULL string terminator
+// Ascii (1 char per byte + string terminator) or hex (2 char per byte + string terminator).
+#define STRING_LENGTH_NORMAL_TX_DATA_MAX (LENGTH_NORMAL_TX_DATA_MAX * 2 + 1)
 #define STRING_LENGTH_UINT8 4 // "0" to "255" (any uint8)
 #define STRING_LENGTH_UINT32 11 // "0" to "4294967295" (any uint32)
 #define STRING_LENGTH_NIM_AMOUNT 22 // "0" to "90071992547.40991 NIM" (MAX_SAFE_INTEGER Luna in NIM)
@@ -85,6 +86,7 @@ typedef enum {
 
 typedef struct {
     char recipient[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
+    char extra_data_label[9]; // "Data" or "Data Hex" + string terminator
     char extra_data[STRING_LENGTH_NORMAL_TX_DATA_MAX];
 } tx_data_normal_t;
 
@@ -145,7 +147,7 @@ void parse_amount(uint64_t amount, char *asset, char *out);
 
 void parse_network_id(uint8_t *in, char *out);
 
-bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, char *out);
+bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_t *out);
 
 void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
     uint32_t validity_start_height, tx_data_htlc_creation_t *out);
