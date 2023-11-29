@@ -884,14 +884,17 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
     dataBuffer += 1 + bip32PathLength * 4;
     dataLength -= 1 + bip32PathLength * 4;
 
-    uint16_t msgLength;
-    uint8_t msg[32];
+    // Optionally create a signature with which the public key can be verified. We only allow signing messages up to 31
+    // bytes, as we're blind signing here, and longer data could be Nimiq messages, which are 32 byte Sha256 digests, or
+    // transactions, which have varying sizes but larger than 32 bytes.
+    uint8_t msgLength;
+    uint8_t msg[31];
     if (ctx.req.pk.returnSignature) {
-        msgLength = dataLength;
-        if (msgLength > 32) {
-            PRINTF("Verification message to sign must not exceed 32 bytes");
+        if (dataLength >= 32) {
+            PRINTF("Verification message to sign must not exceed 31 bytes");
             THROW(0x6a80);
         }
+        msgLength = (uint8_t) dataLength;
         os_memmove(msg, dataBuffer, msgLength);
     }
 
