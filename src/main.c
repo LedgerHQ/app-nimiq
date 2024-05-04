@@ -78,14 +78,14 @@ typedef struct publicKeyContext_t {
 
 typedef struct transactionContext_t {
     uint8_t bip32PathLength;
-    uint32_t bip32Path[MAX_BIP32_PATH];
+    uint32_t bip32Path[MAX_BIP32_PATH_LENGTH];
     uint8_t rawTx[MAX_RAW_TX];
     uint32_t rawTxLength;
     txContent_t content;
 } transactionContext_t;
 
 typedef struct messageSigningContext_t {
-    uint32_t bip32Path[MAX_BIP32_PATH];
+    uint32_t bip32Path[MAX_BIP32_PATH_LENGTH];
     // nimiq supports signing data of arbitrary length, but for now we restrict the length in the ledger app to uint32_t
     uint32_t messageLength;
     uint32_t processedMessageLength;
@@ -851,22 +851,6 @@ uint32_t set_result_get_publicKey() {
     return tx;
 }
 
-uint8_t readBip32Path(uint8_t *dataBuffer, uint32_t *bip32Path) {
-    uint8_t bip32PathLength = dataBuffer[0];
-    dataBuffer += 1;
-    if ((bip32PathLength < 0x01) || (bip32PathLength > MAX_BIP32_PATH)) {
-        PRINTF("Invalid bip32 path length");
-        THROW(0x6a80);
-    }
-    uint8_t i;
-    for (i = 0; i < bip32PathLength; i++) {
-        bip32Path[i] = (dataBuffer[0] << 24) | (dataBuffer[1] << 16) |
-                       (dataBuffer[2] << 8) | (dataBuffer[3]);
-        dataBuffer += 4;
-    }
-    return bip32PathLength;
-}
-
 void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLength, volatile unsigned int *flags, volatile unsigned int *tx) {
 
     if ((p1 != P1_SIGNATURE) && (p1 != P1_NO_SIGNATURE)) {
@@ -879,23 +863,26 @@ void handleGetPublicKey(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t da
     }
     ctx.req.pk.returnSignature = (p1 == P1_SIGNATURE);
 
-    uint32_t bip32Path[MAX_BIP32_PATH];
-    uint8_t bip32PathLength = readBip32Path(dataBuffer, bip32Path);
-    dataBuffer += 1 + bip32PathLength * 4;
-    dataLength -= 1 + bip32PathLength * 4;
+    uint32_t bip32Path[MAX_BIP32_PATH_LENGTH];
+    uint8_t bip32PathLength = readBip32Path(&dataBuffer, &dataLength, bip32Path);
 
     // Optionally create a signature with which the public key can be verified. We only allow signing messages up to 31
     // bytes, as we're blind signing here, and longer data could be Nimiq messages, which are 32 byte Sha256 digests, or
     // transactions, which have varying sizes but larger than 32 bytes.
     uint8_t msgLength;
-    uint8_t msg[31];
+    uint8_t *msg;
     if (ctx.req.pk.returnSignature) {
-        if (dataLength >= 32) {
+        if (dataLength > 31) {
             PRINTF("Verification message to sign must not exceed 31 bytes");
             THROW(0x6a80);
         }
         msgLength = (uint8_t) dataLength;
-        os_memmove(msg, dataBuffer, msgLength);
+        msg = readSubBuffer(dataLength, &dataBuffer, &dataLength);
+    }
+
+    if (dataLength != 0) {
+        PRINTF("INS_GET_PUBLIC_KEY instruction data too long");
+        THROW(0x6700);
     }
 
     uint8_t privateKeyData[32];
@@ -945,17 +932,14 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     }
 
     if (p1 == P1_FIRST) {
-        // read the bip32 path
-        ctx.req.tx.bip32PathLength = readBip32Path(dataBuffer, ctx.req.tx.bip32Path);
-        dataBuffer += 1 + ctx.req.tx.bip32PathLength * 4;
-        dataLength -= 1 + ctx.req.tx.bip32PathLength * 4;
+        ctx.req.tx.bip32PathLength = readBip32Path(&dataBuffer, &dataLength, ctx.req.tx.bip32Path);
 
         // read raw tx data
-        ctx.req.tx.rawTxLength = dataLength;
         if (dataLength > MAX_RAW_TX) {
             PRINTF("Transaction too long");
             THROW(0x6700);
         }
+        ctx.req.tx.rawTxLength = dataLength;
         os_memmove(ctx.req.tx.rawTx, dataBuffer, dataLength);
     } else {
         // read more raw tx data
@@ -973,7 +957,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     }
 
     os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
-    parseTx(ctx.req.tx.rawTx, &ctx.req.tx.content);
+    parseTx(ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, &ctx.req.tx.content);
 
     const ux_flow_step_t* const * transaction_flow;
     if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_NORMAL) {
@@ -1003,25 +987,10 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
     }
 
     if (p1 == P1_FIRST) {
-        // read the bip32 path
-        ctx.req.msg.bip32PathLength = readBip32Path(dataBuffer, ctx.req.msg.bip32Path);
-        const uint8_t bip32PathEncodedLength = /* bip path length encoded in uint8 */ 1
-            + /* bip path entries, each uint32 */ ctx.req.msg.bip32PathLength * 4;
-        if (dataLength < bip32PathEncodedLength + /* flags */ 1 + /* message length encoded in uint32 */ 4) {
-            // we expect the first chunk to at least contain the bip path, flags and encoded message length completely
-            PRINTF("First message signing chunk too short");
-            THROW(0x6700);
-        }
-        dataBuffer += bip32PathEncodedLength;
-        dataLength -= bip32PathEncodedLength;
-
-        ctx.req.msg.flags = dataBuffer[0];
-        dataBuffer++;
-        dataLength--;
-
-        ctx.req.msg.messageLength = readUInt32Block(dataBuffer);
-        dataBuffer += 4;
-        dataLength -= 4;
+        // Note: we expect the first chunk to at least contain the bip path, flags and encoded message length completely
+        ctx.req.msg.bip32PathLength = readBip32Path(&dataBuffer, &dataLength, ctx.req.msg.bip32Path);
+        ctx.req.msg.flags = readUInt8(&dataBuffer, &dataLength);
+        ctx.req.msg.messageLength = readUInt32(&dataBuffer, &dataLength);
 
         ctx.req.msg.processedMessageLength = 0;
         ctx.req.msg.isPrintableAscii = ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH; // ascii-check later
@@ -1031,8 +1000,8 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
 
         // Nimiq signed messages add a prefix to the message and then hash both together.
         // This makes the calculated signature recognisable as a Nimiq specific signature and prevents signing arbitrary
-        // arbitrary data (e.g. a transaction). This implementation is equivalent to the handling in Key.signMessage in
-        // Nimiq's Keyguard.
+        // data (e.g. a transaction). This implementation is equivalent to the handling in Key.signMessage in Nimiq's
+        // Keyguard.
         cx_hash(&ctx.req.msg.prepare.prefixedMessageHashContext.header, /* flags */ 0,
             /* data */ MESSAGE_SIGNING_PREFIX, /* data length */ strlen(MESSAGE_SIGNING_PREFIX), /* output */ NULL,
             /* output length */ 0);
@@ -1061,8 +1030,6 @@ void handleSignMessage(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dat
         cx_hash(&ctx.req.msg.prepare.prefixedMessageHashContext.header, /* flags */ 0, /* data */ dataBuffer,
             /* data length */ dataLength, /* output */ NULL, /* output length */ 0);
         ctx.req.msg.processedMessageLength += dataLength; // guaranteed to not overflow due to the length check above
-        dataBuffer += dataLength;
-        dataLength -= dataLength;
     }
 
     if (p2 == P2_MORE) {
@@ -1119,8 +1086,8 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
                 THROW(0x6982);
             }
             if (G_io_apdu_buffer[OFFSET_CLA] != CLA) {
-                THROW(0x6e00);
                 PRINTF("Ivalid CLA");
+                THROW(0x6e00);
             }
 
             ctx.u2fTimer = U2F_REQUEST_TIMEOUT;
@@ -1214,10 +1181,10 @@ void nimiq_main(void) {
                 rx = io_exchange(CHANNEL_APDU | flags, rx);
                 flags = 0;
 
-                // no apdu received, well, reset the session, and reset the
+                // no or invalid length apdu received, well, reset the session, and reset the
                 // bootloader configuration
-                if (rx == 0) {
-                    PRINTF("No APDU received");
+                if (rx < OFFSET_LC + 1 || rx != G_io_apdu_buffer[OFFSET_LC] + OFFSET_CDATA) {
+                    PRINTF("No or invalid length APDU received");
                     THROW(0x6982);
                 }
 

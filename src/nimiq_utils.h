@@ -30,6 +30,8 @@
 #include "os.h"
 #endif // TEST
 
+#define MAX_BIP32_PATH_LENGTH 10
+
 #define LENGTH_NORMAL_TX_DATA_MAX 64
 // Ascii (1 char per byte + string terminator) or hex (2 char per byte + string terminator).
 #define STRING_LENGTH_NORMAL_TX_DATA_MAX (LENGTH_NORMAL_TX_DATA_MAX * 2 + 1)
@@ -135,7 +137,7 @@ typedef struct {
     char network[12]; // "Main", "Test", "Development" or "Bounty"
 } txContent_t;
 
-void parseTx(uint8_t *buffer, txContent_t *txContent);
+void parseTx(uint8_t *buffer, uint16_t buffer_length, txContent_t *out);
 
 void print_address(uint8_t *in, char *out);
 
@@ -145,7 +147,7 @@ void print_hex(uint8_t *data, uint16_t dataLength, char *out, uint16_t outLength
 
 void parse_amount(uint64_t amount, char *asset, char *out);
 
-void parse_network_id(uint8_t *in, char *out);
+void parse_network_id(uint8_t network_id, char *out);
 
 bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_t *out);
 
@@ -155,11 +157,17 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
 void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
     uint64_t tx_amount, tx_data_vesting_creation_t *out);
 
-uint16_t readUInt16Block(uint8_t *buffer);
+uint8_t *readSubBuffer(uint16_t subBufferLength, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
-uint32_t readUInt32Block(uint8_t *buffer);
+uint8_t readUInt8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
-uint64_t readUInt64Block(uint8_t *buffer);
+uint16_t readUInt16(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+
+uint32_t readUInt32(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+
+uint64_t readUInt64(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+
+uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint32_t *out_bip32Path);
 
 bool isPrintableAscii(uint8_t *data, uint16_t dataLength);
 
