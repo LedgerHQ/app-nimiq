@@ -79,6 +79,7 @@ typedef struct publicKeyContext_t {
 typedef struct transactionContext_t {
     uint8_t bip32PathLength;
     uint32_t bip32Path[MAX_BIP32_PATH_LENGTH];
+    transaction_version_t transactionVersion;
     uint8_t rawTx[MAX_RAW_TX];
     uint32_t rawTxLength;
     txContent_t content;
@@ -933,6 +934,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
 
     if (p1 == P1_FIRST) {
         ctx.req.tx.bip32PathLength = readBip32Path(&dataBuffer, &dataLength, ctx.req.tx.bip32Path);
+        ctx.req.tx.transactionVersion = readUInt8(&dataBuffer, &dataLength);
 
         // read raw tx data
         if (dataLength > MAX_RAW_TX) {
@@ -957,7 +959,7 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     }
 
     os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
-    parseTx(ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, &ctx.req.tx.content);
+    parseTx(ctx.req.tx.transactionVersion, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, &ctx.req.tx.content);
 
     const ux_flow_step_t* const * transaction_flow;
     if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_NORMAL) {

@@ -61,6 +61,11 @@ typedef enum {
 } account_type_t;
 
 typedef enum {
+    TRANSACTION_VERSION_LEGACY,
+    // TRANSACTION_VERSION_ALBATROSS,
+} transaction_version_t;
+
+typedef enum {
     TRANSACTION_TYPE_NORMAL,
     TRANSACTION_TYPE_VESTING_CREATION,
     TRANSACTION_TYPE_HTLC_CREATION,
@@ -137,7 +142,7 @@ typedef struct {
     char network[12]; // "Main", "Test", "Development" or "Bounty"
 } txContent_t;
 
-void parseTx(uint8_t *buffer, uint16_t buffer_length, txContent_t *out);
+void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out);
 
 void print_address(uint8_t *in, char *out);
 

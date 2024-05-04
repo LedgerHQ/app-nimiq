@@ -497,7 +497,12 @@ uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, ui
     return bip32PathLength;
 }
 
-void parseTx(uint8_t *buffer, uint16_t buffer_length, txContent_t *out) {
+void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out) {
+    if (version != TRANSACTION_VERSION_LEGACY) {
+        PRINTF("Unsupported transaction version");
+        THROW(0x6a80);
+    }
+
     // Read the extra data
     uint16_t data_length = readUInt16(&buffer, &buffer_length);
     PRINTF("data length: %u\n", data_length);
