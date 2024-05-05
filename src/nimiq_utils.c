@@ -441,6 +441,9 @@ void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *s
     parse_amount(pre_vested_amount, "NIM", out->pre_vested_amount);
 }
 
+// Buffer utils
+// Note that these favor sanity checks and code readability over execution speed or low stack / memory usage.
+
 /**
  * Returns the leading part of a buffer as pointer in the original buffer, and advances the buffer pointer by length of
  * the extracted sub buffer. Notably, no copy of the sub buffer is created.
@@ -483,6 +486,43 @@ uint32_t readUInt32(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
 uint64_t readUInt64(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
     return (((uint64_t) readUInt32(in_out_buffer, in_out_bufferLength)) << 32)
         | readUInt32(in_out_buffer, in_out_bufferLength);
+}
+
+/**
+ * Read a varint compatible with serde / postcard serialization, see https://postcard.jamesmunns.com/wire-format.html,
+ * also called LEB, see https://en.wikipedia.org/wiki/LEB128. Note that this serialization format is different from, for
+ * example, Bitcoin's variable length integers.
+ */
+uint32_t readUVarInt(uint8_t maxBits, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
+    // This is currently an incomplete implementation, as it only supports reading single-byte varints, i.e. values up
+    // to 127, as we currently don't need reading higher values. Parameter maxBits is also mostly ignored yet in this
+    // implementation, we only check that it is not less that what's read from a single byte.
+    if (maxBits < 7) {
+        PRINTF("Unsupported varint length");
+        THROW(0x9484);
+    }
+    uint8_t byte = readUInt8(in_out_buffer, in_out_bufferLength);
+    uint8_t continuationBit = byte & 0x80; // the most significant bit is the continuation bit
+    if (continuationBit) {
+        PRINTF("Unsupported multi-byte varint");
+        THROW(0x9484);
+    }
+    return byte;
+}
+
+/**
+ * Read a vector of bytes, compatible with serde / postcard serialization of a rust Vec<u8>. No copy of the data is
+ * created.
+ */
+uint16_t readVecU8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint8_t **out_vecData) {
+    // A Vec is represented as a seq by serde, see https://serde.rs/data-model.html#types, which in turn is encoded as a
+    // varint(usize) followed by the u8 data by postcard, see https://postcard.jamesmunns.com/wire-format.html#23---seq.
+    // While usize is typically 32 bit or 64 bit, see https://postcard.jamesmunns.com/wire-format.html#isize-and-usize,
+    // depending on the host size, we limit it to 16 bit here, as the memory of Ledger devices can't hold that long data
+    // anyway. The u8 data is stored as individual bytes, see https://postcard.jamesmunns.com/wire-format.html#7---u8.
+    uint16_t length = (uint16_t) readUVarInt(16, in_out_buffer, in_out_bufferLength);
+    *out_vecData = readSubBuffer(length, in_out_buffer, in_out_bufferLength);
+    return length;
 }
 
 uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint32_t *out_bip32Path) {

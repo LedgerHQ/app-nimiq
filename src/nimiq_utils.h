@@ -172,6 +172,10 @@ uint32_t readUInt32(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
 uint64_t readUInt64(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
+uint32_t readUVarInt(uint8_t maxBits, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+
+uint16_t readVecU8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint8_t **out_vecData);
+
 uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint32_t *out_bip32Path);
 
 bool isPrintableAscii(uint8_t *data, uint16_t dataLength);
