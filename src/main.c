@@ -57,10 +57,25 @@ unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 #define OFFSET_LC 4
 #define OFFSET_CDATA 5
 
-// Max length for a transaction's serialized content (66 bytes excluding extra data) with max allowed data which is 64
-// bytes for a normal transaction, 44 bytes for a vesting contract creation or 110 bytes for a htlc creation (with hash
-// algorithm Sha512)
-#define MAX_RAW_TX 176
+// Max supported length for a transaction's serialized content, based on Albatross, where data is generally longer due
+// to added sender data and uint64 timestamps instead of uint32 block counts in vesting and htlc contracts. Sum of:
+// - Minimum of 67 bytes common to all transactions for recipient data length, sender address, sender type, recipient
+//   address, recipient type, value, fee, validity start height, network id, flags, sender data length (assuming sender
+//   data length being encoded in a single byte varint, i.e. sender data up to 127 bytes length), recipient data length.
+// - Sender or recipient data of up to 121 bytes. Note that currently, we don't support sender data and recipient data
+//   to be set at the same time. This number is the maximum of:
+//   1 byte sender data for OutgoingStakingTransactionData.
+//   64 bytes recipient data limit we set for basic transactions.
+//   52 bytes recipient data for fully specified VestingContract CreationTransactionData.
+//   114 bytes recipient data for HashedTimeLockedContract CreationTransactionData with Sha512 hash root.
+//   Staking recipient data for IncomingStakingTransactionData (including enum index), which can be:
+//     120 bytes for fully specified CreateStaker with ed25519 signature proof with empty merkle path.
+//     21 bytes for AddStake.
+//     121 bytes for fully specified UpdateStaker with ed25519 signature proof with empty merkle path.
+//     107 bytes for SetActiveStake.
+//     107 bytes for RetireStake.
+//     (Validator transactions are not covered yet, as not supported yet.)
+#define MAX_RAW_TX 188
 // Limit printable message length as Nano S has only about 4kB of ram total, used for global vars and stack.
 // Additionally, the paging ui displays only ~16 chars per page on Nano S. Printed message buffer length dimension
 // chosen such that it can hold the printed uint32 message length (STRING_LENGTH_UINT32 (11) bytes), the message printed

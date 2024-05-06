@@ -21,6 +21,8 @@
 #include "nimiq_utils.h"
 #include "base32.h"
 
+// The maximum allowed NIM amount. Equal to JavaScript's Number.MAX_SAFE_INTEGER, see Coin::MAX_SAFE_VALUE in
+// primitives/src/coin.rs in core-rs-albatross.
 #define MAX_SAFE_INTEGER 9007199254740991
 
 static const uint8_t AMOUNT_MAX_SIZE = 17;
@@ -183,14 +185,14 @@ void parse_amount(uint64_t amount, char *asset, char *out) {
 
 }
 
-void parse_network_id(uint8_t network_id, char *out) {
-    if (network_id == 42) {
+void parse_network_id(transaction_version_t version, uint8_t network_id, char *out) {
+    if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 42 : 24)) {
         strcpy(out, "Main");
-    } else if (network_id == 1) {
+    } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 1 : 5)) {
         strcpy(out, "Test");
-    } else if (network_id == 2) {
+    } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 2 : 6)) {
         strcpy(out, "Development");
-    } else if (network_id == 3) {
+    } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 3 : 7)) {
         strcpy(out, "Bounty");
     } else {
         PRINTF("Invalid network");
@@ -233,8 +235,13 @@ bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_t 
     return false;
 }
 
-void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
-    uint32_t validity_start_height, tx_data_htlc_creation_t *out) {
+void parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+    account_type_t sender_type, uint32_t validity_start_height, tx_data_htlc_creation_t *out) {
+    if (version != TRANSACTION_VERSION_LEGACY) {
+        PRINTF("HTLC creation not implemented yet for Albatross");
+        THROW(0x9484);
+    }
+
     // Process refund address
     uint8_t *refund_address_bytes = readSubBuffer(20, &data, &data_length);
     print_address(refund_address_bytes, out->refund_address);
@@ -296,8 +303,13 @@ void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *send
     }
 }
 
-void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
-    uint64_t tx_amount, tx_data_vesting_creation_t *out) {
+void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+    account_type_t sender_type, uint64_t tx_amount, tx_data_vesting_creation_t *out) {
+    if (version != TRANSACTION_VERSION_LEGACY) {
+        PRINTF("Vesting creation not implemented yet for Albatross");
+        THROW(0x9484);
+    }
+
     // Note that this method could be quite heavy on the stack (depending on how well the compiler optimizes it). It
     // could be refactored by allocating less variables by printing them directly or re-using variables, but at the cost
     // of less readable code.
@@ -538,12 +550,14 @@ uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, ui
 }
 
 void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out) {
-    if (version != TRANSACTION_VERSION_LEGACY) {
+    if (version != TRANSACTION_VERSION_LEGACY && version != TRANSACTION_VERSION_ALBATROSS) {
         PRINTF("Unsupported transaction version");
         THROW(0x6a80);
     }
 
-    // Read the extra data
+    // For serialization format see serialize_content in primitives/transaction/src/lib.rs in core-rs-albatross.
+
+    // Read the recipient data
     uint16_t data_length = readUInt16(&buffer, &buffer_length);
     PRINTF("data length: %u\n", data_length);
     uint8_t *data = readSubBuffer(data_length, &buffer, &buffer_length);
@@ -573,15 +587,28 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
 
     // Process the network field
     uint8_t network_id = readUInt8(&buffer, &buffer_length);
-    parse_network_id(network_id, out->network);
+    parse_network_id(version, network_id, out->network);
 
     // Process the flags field
     uint8_t flags = readUInt8(&buffer, &buffer_length);
     PRINTF("flags: %u\n", flags);
 
+    // Read the sender data
+    uint16_t sender_data_length = 0;
+    uint8_t *sender_data = NULL;
+    if (version == TRANSACTION_VERSION_ALBATROSS) {
+        sender_data_length = readVecU8(&buffer, &buffer_length, &sender_data);
+        PRINTF("sender data length: %u\n", sender_data_length);
+    }
+
     if (buffer_length != 0) {
         PRINTF("Transaction too long");
         THROW(0x6700);
+    }
+
+    if (sender_data_length) {
+        PRINTF("Transactions with sender data are not supported yet");
+        THROW(0x9484);
     }
 
     if (flags == 0) {
@@ -607,18 +634,19 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
         if (recipient_type == ACCOUNT_TYPE_HTLC) {
             out->transaction_type = TRANSACTION_TYPE_HTLC_CREATION;
             strcpy(out->transaction_type_label, "HTLC / Swap");
-            parse_htlc_creation_data(data, data_length, sender, sender_type, validity_start_height,
+            parse_htlc_creation_data(version, data, data_length, sender, sender_type, validity_start_height,
                 &out->type_specific.htlc_creation_tx);
         } else if (recipient_type == ACCOUNT_TYPE_VESTING) {
             out->transaction_type = TRANSACTION_TYPE_VESTING_CREATION;
             strcpy(out->transaction_type_label, "Vesting");
-            parse_vesting_creation_data(data, data_length, sender, sender_type, value,
+            parse_vesting_creation_data(version, data, data_length, sender, sender_type, value,
                 &out->type_specific.vesting_creation_tx);
         } else {
-            PRINTF("Unsupported contract type");
+            PRINTF("Unsupported or disallowed contract type");
             THROW(0x6a80);
         }
     } else {
+        // Note that the signaling flag is not supported yet.
         PRINTF("Unsupported flag");
         THROW(0x6a80);
     }

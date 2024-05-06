@@ -62,7 +62,7 @@ typedef enum {
 
 typedef enum {
     TRANSACTION_VERSION_LEGACY,
-    // TRANSACTION_VERSION_ALBATROSS,
+    TRANSACTION_VERSION_ALBATROSS,
 } transaction_version_t;
 
 typedef enum {
@@ -152,15 +152,15 @@ void print_hex(uint8_t *data, uint16_t dataLength, char *out, uint16_t outLength
 
 void parse_amount(uint64_t amount, char *asset, char *out);
 
-void parse_network_id(uint8_t network_id, char *out);
+void parse_network_id(transaction_version_t version, uint8_t network_id, char *out);
 
 bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_t *out);
 
-void parse_htlc_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
-    uint32_t validity_start_height, tx_data_htlc_creation_t *out);
+void parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+    account_type_t sender_type, uint32_t validity_start_height, tx_data_htlc_creation_t *out);
 
-void parse_vesting_creation_data(uint8_t *data, uint16_t data_length, uint8_t *sender, account_type_t sender_type,
-    uint64_t tx_amount, tx_data_vesting_creation_t *out);
+void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+    account_type_t sender_type, uint64_t tx_amount, tx_data_vesting_creation_t *out);
 
 uint8_t *readSubBuffer(uint16_t subBufferLength, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
