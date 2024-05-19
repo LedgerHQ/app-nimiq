@@ -17,8 +17,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include "os.h"
 
 #include "nimiq_utils.h"
+#include "nimiq_staking_utils.h"
 #include "base32.h"
 
 // The maximum allowed NIM amount. Equal to JavaScript's Number.MAX_SAFE_INTEGER, see Coin::MAX_SAFE_VALUE in
@@ -110,14 +112,19 @@ void print_address(uint8_t *in, char *out) {
     out[44] = '\0';
 }
 
-void print_public_key_as_address(uint8_t *in, char *out) {
+void public_key_to_address(uint8_t *in, uint8_t *out) {
     // See lcx_blake2.h and lcx_hash.h in Ledger sdk
-    unsigned char blake2b_hash[32]; // the first 20 bytes of the hash will be the Nimiq address
+    unsigned char blake2b_hash[32];
     cx_blake2b_t blake2b_context;
     cx_blake2b_init(&blake2b_context, /* hash length in bits */ 256);
     cx_hash(&blake2b_context.header, CX_LAST, in, 32, blake2b_hash, 32);
+    os_memmove(out, blake2b_hash, 20); // the first 20 bytes of the hash are the Nimiq address
+}
 
-    print_address(blake2b_hash, out);
+void print_public_key_as_address(uint8_t *in, char *out) {
+    uint8_t address[20];
+    public_key_to_address(in, address);
+    print_address(address, out);
 }
 
 void print_hex(uint8_t *data, uint16_t dataLength, char *out, uint16_t outLength) {
@@ -200,7 +207,7 @@ void parse_network_id(transaction_version_t version, uint8_t network_id, char *o
     }
 }
 
-bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_t *out) {
+bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or_staking_outgoing_t *out) {
     // Make sure we don't get called with more data than we can fit on the extra data field.
     if (data_length > LENGTH_NORMAL_TX_DATA_MAX) {
         PRINTF("Extra data too long");
@@ -522,6 +529,10 @@ uint32_t readUVarInt(uint8_t maxBits, uint8_t **in_out_buffer, uint16_t *in_out_
     return byte;
 }
 
+bool readBool(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
+    return readUInt8(in_out_buffer, in_out_bufferLength) != 0;
+}
+
 /**
  * Read a vector of bytes, compatible with serde / postcard serialization of a rust Vec<u8>. No copy of the data is
  * created.
@@ -547,6 +558,24 @@ uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, ui
         out_bip32Path[i] = readUInt32(in_out_buffer, in_out_bufferLength);
     }
     return bip32PathLength;
+}
+
+signature_proof_t readSignatureProof(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
+    // See Serde::Serialize for SignatureProof in primitives/transaction/src/signature_proof.rs in core-rs-albatross.
+    signature_proof_t signatureProof;
+    signatureProof.type_and_flags = readUInt8(in_out_buffer, in_out_bufferLength);
+    if (signatureProof.type_and_flags != 0) {
+        PRINTF("Only ed25519 signature proofs without flags supported");
+        THROW(0x6a80);
+    }
+    signatureProof.public_key = readSubBuffer(32, in_out_buffer, in_out_bufferLength);
+    signatureProof.merkle_path_length = readUInt8(in_out_buffer, in_out_bufferLength);
+    if (signatureProof.merkle_path_length) {
+        PRINTF("Only signature proofs with empty merkle path supported");
+        THROW(0x6a80);
+    }
+    signatureProof.signature = readSubBuffer(64, in_out_buffer, in_out_bufferLength);
+    return signatureProof;
 }
 
 void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out) {
@@ -606,49 +635,147 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
         THROW(0x6700);
     }
 
-    if (sender_data_length) {
-        PRINTF("Transactions with sender data are not supported yet");
-        THROW(0x9484);
+    // Note: the transaction validity checks here are mostly for good measure and not entirely thorough or strict as
+    // they don't need to be, because an invalid transaction will be rejected by the network nodes, even if we let it
+    // pass here in the app.
+
+    if (sender_type == ACCOUNT_TYPE_STAKING) {
+        // Outgoing staking transaction from the staking contract.
+        if (flags || data_length) {
+            // Would theoretically be allowed, but we don't support that yet. E.g. we don't support an unstaking tx to
+            // at the same time create a contract. It can also not be a transaction to the staking contract, because
+            // the sender and recipient address can not be the same.
+            PRINTF("Invalid flags or recipient data");
+            THROW(0x6a80);
+        }
+        if (!is_staking_contract(sender)) {
+            // This does not currently seem to be enforced by core-rs-albatross but probably should be. The check here
+            // can be removed once core-rs-albatross checks for it.
+            PRINTF("Sender must be staking contract");
+            THROW(0x6a80);
+        }
+
+        staking_outgoing_data_type_t staking_outgoing_type = parse_staking_outgoing_data(version, sender_data,
+            sender_data_length);
+        out->transaction_type = TRANSACTION_TYPE_STAKING_OUTGOING;
+
+        switch (staking_outgoing_type) {
+            case REMOVE_STAKE:
+                strcpy(out->transaction_type_label, "Unstake");
+                break;
+            default:
+                // Note that validator transactions are not supported yet.
+                PRINTF("Invalid outgoing staking transaction data type");
+                THROW(0x6a80);
+        }
+
+        // Print the recipient address and set unused data to empty string.
+        print_address(recipient, out->type_specific.normal_or_staking_outgoing_tx.recipient);
+        strcpy(out->type_specific.normal_or_staking_outgoing_tx.extra_data_label, "");
+        strcpy(out->type_specific.normal_or_staking_outgoing_tx.extra_data, "");
+
+        return;
     }
 
-    if (flags == 0) {
-        // Normal transaction
-        if (recipient_type != ACCOUNT_TYPE_BASIC) {
-            PRINTF("Recipient type must be basic for normal transactions");
-            THROW(0x6a80);
+    switch (recipient_type) {
+        case ACCOUNT_TYPE_BASIC: {
+            if (flags || sender_data_length) {
+                // Signaling flag and sender data would theoretically be allowed, but we don't support that yet.
+                PRINTF("Invalid flags or sender data");
+                THROW(0x6a80);
+            }
+
+            bool is_cashlink = parse_normal_tx_data(data, data_length,
+                &out->type_specific.normal_or_staking_outgoing_tx);
+            PRINTF("data: %s - is Cashlink: %d\n", out->type_specific.normal_or_staking_outgoing_tx.extra_data,
+                is_cashlink);
+
+            out->transaction_type = TRANSACTION_TYPE_NORMAL;
+            strcpy(out->transaction_type_label, is_cashlink ? "Cashlink" : "Transaction");
+
+            // Print the recipient address
+            // We're ignoring the sender, as it's not too relevant where the funds are coming from.
+            print_address(recipient, out->type_specific.normal_or_staking_outgoing_tx.recipient);
+            break;
         }
 
-        out->transaction_type = TRANSACTION_TYPE_NORMAL;
+        case ACCOUNT_TYPE_VESTING:
+        case ACCOUNT_TYPE_HTLC: {
+            if (flags != TX_FLAG_CONTRACT_CREATION || sender_data_length) {
+                // Contract creation flag must be set, and no other flags are allowed at the same time.
+                // Sender data would theoretically be allowed, but we don't currently support that.
+                PRINTF("Invalid flags or sender data");
+                THROW(0x6a80);
+            }
 
-        bool is_cashlink = parse_normal_tx_data(data, data_length, &out->type_specific.normal_tx);
-        PRINTF("data: %s - is Cashlink: %d\n", out->type_specific.normal_tx.extra_data, is_cashlink);
-
-        strcpy(out->transaction_type_label, is_cashlink ? "Cashlink" : "Transaction");
-
-        // Print the recipient address
-        // We're ignoring the sender, as it's not too relevant where the funds are coming from.
-        print_address(recipient, out->type_specific.normal_tx.recipient);
-    } else if (flags == TX_FLAG_CONTRACT_CREATION) {
-        // Note that we're ignoring the recipient for contract creation transactions as it must be the deterministically
-        // calculated contract address, otherwise it's an invalid transaction which is rejected by the network nodes.
-        if (recipient_type == ACCOUNT_TYPE_HTLC) {
-            out->transaction_type = TRANSACTION_TYPE_HTLC_CREATION;
-            strcpy(out->transaction_type_label, "HTLC / Swap");
-            parse_htlc_creation_data(version, data, data_length, sender, sender_type, validity_start_height,
-                &out->type_specific.htlc_creation_tx);
-        } else if (recipient_type == ACCOUNT_TYPE_VESTING) {
-            out->transaction_type = TRANSACTION_TYPE_VESTING_CREATION;
-            strcpy(out->transaction_type_label, "Vesting");
-            parse_vesting_creation_data(version, data, data_length, sender, sender_type, value,
-                &out->type_specific.vesting_creation_tx);
-        } else {
-            PRINTF("Unsupported or disallowed contract type");
-            THROW(0x6a80);
+            // Note that we're ignoring the recipient address for contract creation transactions as it must be the
+            // deterministically calculated contract address, otherwise it's an invalid transaction rejected by the
+            // network nodes.
+            if (recipient_type == ACCOUNT_TYPE_VESTING) {
+                parse_vesting_creation_data(version, data, data_length, sender, sender_type, value,
+                    &out->type_specific.vesting_creation_tx);
+                out->transaction_type = TRANSACTION_TYPE_VESTING_CREATION;
+                strcpy(out->transaction_type_label, "Vesting");
+            } else { // ACCOUNT_TYPE_HTLC
+                parse_htlc_creation_data(version, data, data_length, sender, sender_type, validity_start_height,
+                    &out->type_specific.htlc_creation_tx);
+                out->transaction_type = TRANSACTION_TYPE_HTLC_CREATION;
+                strcpy(out->transaction_type_label, "HTLC / Swap");
+            }
+            break;
         }
-    } else {
-        // Note that the signaling flag is not supported yet.
-        PRINTF("Unsupported flag");
-        THROW(0x6a80);
+
+        case ACCOUNT_TYPE_STAKING: {
+            // Incoming staking transaction to the staking contract.
+            if ((flags && flags != TX_FLAG_SIGNALING) || sender_data_length) {
+                // Flags must be either unset or the signaling flag.
+                // Sender data would theoretically be allowed, but we don't currently support that.
+                PRINTF("Invalid flags or sender data");
+                THROW(0x6a80);
+            }
+            if (!is_staking_contract(recipient)) {
+                // This does not currently seem to be enforced by core-rs-albatross but probably should be. The check
+                // here can be removed once core-rs-albatross checks for it.
+                PRINTF("Recipient must be staking contract");
+                THROW(0x6a80);
+            }
+
+            parse_staking_incoming_data(version, data, data_length, sender, &out->type_specific.staking_incoming_tx);
+            out->transaction_type = TRANSACTION_TYPE_STAKING_INCOMING;
+
+            switch (out->type_specific.staking_incoming_tx.type) {
+                case CREATE_STAKER:
+                    strcpy(out->transaction_type_label, "Create Staker");
+                    break;
+                case ADD_STAKE:
+                    strcpy(out->transaction_type_label, "Add Stake");
+                    break;
+                case UPDATE_STAKER:
+                    strcpy(out->transaction_type_label, "Update Staker");
+                    break;
+                case SET_ACTIVE_STAKE:
+                    strcpy(out->transaction_type_label, "Set Active Stake");
+                    break;
+                case RETIRE_STAKE:
+                    strcpy(out->transaction_type_label, "Retire Stake");
+                    break;
+                default:
+                    // Note that validator transactions are not supported yet.
+                    PRINTF("Invalid incoming staking transaction data type");
+                    THROW(0x6a80);
+            }
+
+            if ((flags == TX_FLAG_SIGNALING)
+                != is_signaling_transaction_data(out->type_specific.staking_incoming_tx.type)) {
+                PRINTF("Signaling flag mismatch");
+                THROW(0x6a80);
+            }
+            break;
+        }
+
+        default:
+            PRINTF("Invalid recipient type");
+            THROW(0x6a80);
     }
 }
 

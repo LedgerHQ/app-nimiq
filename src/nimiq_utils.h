@@ -20,6 +20,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "constants.h"
+#include "nimiq_staking_utils.h"
 #ifdef TEST
 #include <stdio.h>
 #define THROW(code) { printf("error: %d", code); return; }
@@ -30,59 +32,27 @@
 #include "os.h"
 #endif // TEST
 
-#define MAX_BIP32_PATH_LENGTH 10
-
 #define LENGTH_NORMAL_TX_DATA_MAX 64
 // Ascii (1 char per byte + string terminator) or hex (2 char per byte + string terminator).
 #define STRING_LENGTH_NORMAL_TX_DATA_MAX (LENGTH_NORMAL_TX_DATA_MAX * 2 + 1)
-#define STRING_LENGTH_UINT8 4 // "0" to "255" (any uint8)
-#define STRING_LENGTH_UINT32 11 // "0" to "4294967295" (any uint32)
-#define STRING_LENGTH_NIM_AMOUNT 22 // "0" to "90071992547.40991 NIM" (MAX_SAFE_INTEGER Luna in NIM)
-#define STRING_LENGTH_USER_FRIENDLY_ADDRESS 45
-
-#define CASHLINK_MAGIC_NUMBER "\x00\x82\x80\x92\x87"
-#define CASHLINK_MAGIC_NUMBER_LENGTH 5
-
-#define MESSAGE_SIGNING_PREFIX "\x16Nimiq Signed Message:\n" // 0x16 (decimal 22) is the prefix length
-
-#define TX_FLAG_CONTRACT_CREATION 0x1
-#define MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX (0x1 << 0)
-#define MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH (0x1 << 1)
 
 // TODO The threshold for short timeouts should be re-evaluated for Nimiq 2.0. However, keeping the current threshold is
 //  no security risk at the time of switching to 2.0, as the threshold would be rather needed to be increased than
 //  reduced, thus ui steps skipped for short timeouts will be displayed even though we could skip them.
 #define HTLC_TIMEOUT_SOON_THRESHOLD (60 * 24 * 31 * 2); // ~ 2 months at 1 minute block time
 
-typedef enum {
-    ACCOUNT_TYPE_BASIC = 0,
-    ACCOUNT_TYPE_VESTING = 1,
-    ACCOUNT_TYPE_HTLC = 2,
-} account_type_t;
-
-typedef enum {
-    TRANSACTION_VERSION_LEGACY,
-    TRANSACTION_VERSION_ALBATROSS,
-} transaction_version_t;
-
-typedef enum {
-    TRANSACTION_TYPE_NORMAL,
-    TRANSACTION_TYPE_VESTING_CREATION,
-    TRANSACTION_TYPE_HTLC_CREATION,
-} transaction_type_t;
-
-typedef enum {
-    HASH_ALGORITHM_BLAKE2B = 1,
-    HASH_ALGORITHM_ARGON2D = 2,
-    HASH_ALGORITHM_SHA256 = 3,
-    HASH_ALGORITHM_SHA512 = 4,
-} hash_algorithm_t;
-
-typedef enum {
-    MESSAGE_DISPLAY_TYPE_ASCII,
-    MESSAGE_DISPLAY_TYPE_HEX,
-    MESSAGE_DISPLAY_TYPE_HASH,
-} message_display_type_t;
+typedef struct {
+    // Currently only ed25519 without flags and only empty merkle paths are supported, therefore:
+    // - the public key is an ed25519 public key and the signature an ed25519 signature
+    // - no WebauthnExtraFields are present
+    // - no merkle path compressed vector or node hashes are present.
+    uint8_t *public_key; // pointer to a 32 byte ed25519 public key
+    // uint8_t *merkle_path_compressed; // NULL or a pointer to a VecU8
+    // uint8_t *merkle_path_node_hashes; // NULL or a pointer to a VecU8
+    uint8_t *signature; // pointer to a 64 byte ed25519 signature
+    uint8_t type_and_flags;
+    uint8_t merkle_path_length;
+} signature_proof_t;
 
 // Data printed for display.
 // Note that this does not include any information about where the funds are coming from (a regular account, htlc,
@@ -95,7 +65,7 @@ typedef struct {
     char recipient[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
     char extra_data_label[9]; // "Data" or "Data Hex" + string terminator
     char extra_data[STRING_LENGTH_NORMAL_TX_DATA_MAX];
-} tx_data_normal_t;
+} tx_data_normal_or_staking_outgoing_t;
 
 typedef struct {
     bool is_refund_address_sender_address;
@@ -130,19 +100,24 @@ typedef struct {
 
 typedef struct {
     union {
-        tx_data_normal_t normal_tx;
+        tx_data_normal_or_staking_outgoing_t normal_or_staking_outgoing_tx;
         tx_data_htlc_creation_t htlc_creation_tx;
         tx_data_vesting_creation_t vesting_creation_tx;
+        tx_data_staking_incoming_t staking_incoming_tx;
     } type_specific;
 
     transaction_type_t transaction_type;
-    char transaction_type_label[12]; // "Transaction", "Cashlink", "HTLC / Swap" or "Vesting"
+    // "Transaction", "Cashlink", "HTLC / Swap", "Vesting", "Create Staker", "Add Stake", "Update Staker",
+    // "Set Active Stake", "Retire Stake", "Unstake"
+    char transaction_type_label[17];
     char value[STRING_LENGTH_NIM_AMOUNT];
     char fee[STRING_LENGTH_NIM_AMOUNT];
     char network[12]; // "Main", "Test", "Development" or "Bounty"
 } txContent_t;
 
 void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out);
+
+void public_key_to_address(uint8_t *in, uint8_t *out);
 
 void print_address(uint8_t *in, char *out);
 
@@ -154,7 +129,7 @@ void parse_amount(uint64_t amount, char *asset, char *out);
 
 void parse_network_id(transaction_version_t version, uint8_t network_id, char *out);
 
-bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_t *out);
+bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or_staking_outgoing_t *out);
 
 void parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
     account_type_t sender_type, uint32_t validity_start_height, tx_data_htlc_creation_t *out);
@@ -174,9 +149,13 @@ uint64_t readUInt64(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
 uint32_t readUVarInt(uint8_t maxBits, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
+bool readBool(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+
 uint16_t readVecU8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint8_t **out_vecData);
 
 uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint32_t *out_bip32Path);
+
+signature_proof_t readSignatureProof(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
 bool isPrintableAscii(uint8_t *data, uint16_t dataLength);
 

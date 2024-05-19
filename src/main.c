@@ -29,8 +29,6 @@
 
 unsigned char G_io_seproxyhal_spi_buffer[IO_SEPROXYHAL_BUFFER_SIZE_B];
 
-#define MAX_BIP32_PATH 10
-
 #define CLA 0xE0
 // Defined instructions.
 // Note that some values are disallowed as instructions (odd numbers, 6X, 9X) or predefined by ISO7816-3, see
@@ -202,9 +200,10 @@ UX_STEP_NOCB(
         "Confirm",
         ctx.req.tx.content.transaction_type_label,
     });
-UX_STEP_NOCB(
+UX_OPTIONAL_STEP_NOCB(
     ux_transaction_generic_flow_amount_step,
     paging,
+    strcmp(ctx.req.tx.content.value, "0 NIM") != 0, // can be 0 for signaling transactions
     {
         "Amount",
         ctx.req.tx.content.value,
@@ -246,27 +245,27 @@ UX_STEP_CB(
 
 // Normal, non contract creation transaction specific UI steps
 UX_STEP_NOCB(
-    ux_transaction_normal_flow_recipient_step,
+    ux_transaction_normal_or_staking_outgoing_flow_recipient_step,
     paging,
     {
         "Recipient",
-        ctx.req.tx.content.type_specific.normal_tx.recipient,
+        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.recipient,
     });
 UX_OPTIONAL_STEP_NOCB(
-    ux_transaction_normal_flow_data_step,
+    ux_transaction_normal_or_staking_outgoing_flow_data_step,
     paging,
-    strlen(ctx.req.tx.content.type_specific.normal_tx.extra_data),
+    strlen(ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data),
     {
-        ctx.req.tx.content.type_specific.normal_tx.extra_data_label,
-        ctx.req.tx.content.type_specific.normal_tx.extra_data,
+        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data_label,
+        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data,
     });
 
-UX_FLOW(ux_transaction_normal_flow,
+UX_FLOW(ux_transaction_normal_or_staking_outgoing_flow,
     &ux_transaction_generic_flow_transaction_type_step,
-    &ux_transaction_generic_flow_amount_step,
+    &ux_transaction_generic_flow_amount_step, // optional, but always displayed as this is not a signaling transaction
+    &ux_transaction_normal_or_staking_outgoing_flow_recipient_step,
+    &ux_transaction_normal_or_staking_outgoing_flow_data_step, // optional
     &ux_transaction_generic_flow_fee_step, // optional
-    &ux_transaction_normal_flow_recipient_step,
-    &ux_transaction_normal_flow_data_step, // optional
     &ux_transaction_generic_flow_network_step,
     &ux_transaction_generic_flow_approve_step,
     &ux_transaction_generic_flow_reject_step
@@ -370,14 +369,14 @@ UX_OPTIONAL_STEP_NOCB(
 
 UX_FLOW(ux_transaction_htlc_creation_flow,
     &ux_transaction_generic_flow_transaction_type_step,
-    &ux_transaction_generic_flow_amount_step,
-    &ux_transaction_generic_flow_fee_step, // optional
+    &ux_transaction_generic_flow_amount_step, // optional, but always displayed as this is not a signaling transaction
     &ux_htlc_creation_flow_redeem_address_step,
     &ux_htlc_creation_flow_refund_address_step, // optional
     &ux_htlc_creation_flow_hash_root_step,
     &ux_htlc_creation_flow_hash_algorithm_step, // optional
     &ux_htlc_creation_flow_hash_count_step, // optional
     &ux_htlc_creation_flow_timeout_step, // optional
+    &ux_transaction_generic_flow_fee_step, // optional
     &ux_transaction_generic_flow_network_step,
     &ux_transaction_generic_flow_approve_step,
     &ux_transaction_generic_flow_reject_step
@@ -507,8 +506,7 @@ UX_OPTIONAL_STEP_NOCB(
 
 UX_FLOW(ux_transaction_vesting_creation_flow,
     &ux_transaction_generic_flow_transaction_type_step,
-    &ux_transaction_generic_flow_amount_step,
-    &ux_transaction_generic_flow_fee_step, // optional
+    &ux_transaction_generic_flow_amount_step, // optional, but always displayed as this is not a signaling transaction
     &ux_vesting_creation_flow_owner_address_step, // optional
     &ux_vesting_creation_flow_single_vesting_block_step, // optional
     &ux_vesting_creation_flow_start_block_step, // optional
@@ -520,6 +518,93 @@ UX_FLOW(ux_transaction_vesting_creation_flow,
     &ux_vesting_creation_flow_first_step_amount_step, // optional
     &ux_vesting_creation_flow_last_step_amount_step, // optional
     &ux_vesting_creation_flow_pre_vested_amount_step, // optional
+    &ux_transaction_generic_flow_fee_step, // optional
+    &ux_transaction_generic_flow_network_step,
+    &ux_transaction_generic_flow_approve_step,
+    &ux_transaction_generic_flow_reject_step
+);
+
+//////////////////////////////////////////////////////////////////////
+
+// Incoming staking transaction (transactions to the staking contract) specific UI
+// Considerations for which data can be safely skipped under which circumstances:
+// - 0 NIM transaction amount for signaling transactions. If the incoming staking data includes an amount, that is shown
+//   instead.
+// - transaction recipient address as this must be the staking contract.
+// - validator address (from validator signature proof): is always displayed as validator management is considered an
+//   advanced feature, where the user probably wants to have a complete overview of the transaction data. It's also not
+//   a very regularly occurring / common transaction.
+// - staker address (from staker signature proof): If the staker address equals the transaction sender, we omit display
+//   because then the staker is under control of the user / this Ledger (in case of multi-sig, partial control). This is
+//   also the most common case. We don't need to check that the sender address actually belongs to the Ledger account as
+//   a signature for a wrong sender address will be rejected by the network. This also covers contracts as sender as the
+//   staker address can't really be the contract address because for the deterministic contract address, no signing key
+//   is known which could create the valid staker signature proof. Also, multi-sig sender addresses are theoretically
+//   covered, i.e. the mutli-sig signed transactions also assume the multi-sig as staker owner by default, however multi
+//   sig staker signature proofs are not currently supported as they'd require a non-empty merkle path. Note that any
+//   other address under the control of this Ledger could also be whitelisted, but currently the staker address being
+//   equal to the transaction sender is the normal case in our current use cases and whitelisting other Ledger addresses
+//   would require transmitting the staker address key path with the request, such that we can verify that the address
+//   is one under control of this Ledger.
+// - no other parts of the signature proof need to be displayed to the user as invalid signature proofs will be rejected
+//   by the network nodes.
+// - delegation addresses: are always displayed as the assumption is that common, non-advanced users would not delegate
+//   to themselves, and advanced users would like to see this information, even if delegating to themselves.
+UX_OPTIONAL_STEP_NOCB(
+    ux_staking_incoming_flow_set_active_stake_or_retire_stake_amount_step,
+    paging,
+    // Show if it's a data type that specifies an amount in the data. Note that these are signaling transactions. I.e.
+    // the regular transaction amount is 0, and not displayed.
+    ctx.req.tx.content.type_specific.staking_incoming_tx.type == SET_ACTIVE_STAKE
+        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == RETIRE_STAKE,
+    {
+        "Amount",
+        ctx.req.tx.content.type_specific.staking_incoming_tx.set_active_stake_or_retire_stake.amount,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_staking_incoming_flow_staker_address_step,
+    paging,
+    // Show if it's a staker tx, as opposed to a validator tx, and staker address is set (i.e. it's different to sender)
+    (ctx.req.tx.content.type_specific.staking_incoming_tx.type == CREATE_STAKER
+        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == ADD_STAKE
+        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == UPDATE_STAKER
+        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == SET_ACTIVE_STAKE
+        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == RETIRE_STAKE
+    ) && strlen(ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_address),
+    {
+        "Staker",
+        ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_address,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_staking_incoming_flow_create_staker_or_update_staker_delegation_step,
+    paging,
+    // Show if it's a data type that potentially specifies a delegation address, and it is set.
+    (ctx.req.tx.content.type_specific.staking_incoming_tx.type == CREATE_STAKER
+        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == UPDATE_STAKER
+    ) && strlen(ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker.delegation),
+    {
+        "Delegation",
+        ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker.delegation,
+    });
+UX_OPTIONAL_STEP_NOCB(
+    ux_staking_incoming_flow_update_staker_reactivate_all_stake_step,
+    paging,
+    // Show reactivate_all_stake for data type UPDATE_STAKER
+    ctx.req.tx.content.type_specific.staking_incoming_tx.type == UPDATE_STAKER,
+    {
+        "Reactivate all Stake",
+        ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker
+            .update_staker_reactivate_all_stake,
+    });
+
+UX_FLOW(ux_transaction_staking_incoming_flow,
+    &ux_transaction_generic_flow_transaction_type_step,
+    &ux_transaction_generic_flow_amount_step, // optional, not shown for signaling tx
+    &ux_staking_incoming_flow_set_active_stake_or_retire_stake_amount_step, // optional, for amount in signaling data
+    &ux_staking_incoming_flow_staker_address_step, // optional
+    &ux_staking_incoming_flow_create_staker_or_update_staker_delegation_step, // optional
+    &ux_staking_incoming_flow_update_staker_reactivate_all_stake_step, // optional
+    &ux_transaction_generic_flow_fee_step, // optional
     &ux_transaction_generic_flow_network_step,
     &ux_transaction_generic_flow_approve_step,
     &ux_transaction_generic_flow_reject_step
@@ -977,12 +1062,15 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
     parseTx(ctx.req.tx.transactionVersion, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, &ctx.req.tx.content);
 
     const ux_flow_step_t* const * transaction_flow;
-    if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_NORMAL) {
-        transaction_flow = ux_transaction_normal_flow;
+    if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_NORMAL
+        || ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_STAKING_OUTGOING) {
+        transaction_flow = ux_transaction_normal_or_staking_outgoing_flow;
     } else if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_HTLC_CREATION) {
         transaction_flow = ux_transaction_htlc_creation_flow;
     } else if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_VESTING_CREATION) {
         transaction_flow = ux_transaction_vesting_creation_flow;
+    } else if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_STAKING_INCOMING) {
+        transaction_flow = ux_transaction_staking_incoming_flow;
     } else {
         PRINTF("Invalid transaction type");
         THROW(0x6a80);
