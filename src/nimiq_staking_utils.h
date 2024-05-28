@@ -21,9 +21,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "constants.h"
+#include "signature_proof.h"
 
 typedef struct {
     staking_incoming_data_type_t type;
+    bool has_validator_or_staker_signature_proof;
+    signature_proof_t validator_or_staker_signature_proof; // only used if has_validator_or_staker_signature_proof set
     // All data types have a validator or staker address. Empty string if equal to sender address.
     char validator_or_staker_address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
     union {

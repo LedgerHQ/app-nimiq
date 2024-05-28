@@ -811,15 +811,67 @@ unsigned int io_seproxyhal_touch_tx_ok() {
     cx_ecfp_init_private_key(CX_CURVE_Ed25519, privateKeyData, 32, &privateKey);
     os_memset(privateKeyData, 0, sizeof(privateKeyData));
 
-    // Sign transaction.
+    // For incoming staking transactions which are meant to include a staker signature proof in their recipient data but
+    // only include the empty default proof, we replace that empty signature proof with an actually signed staker proof.
+    // For this, the same ledger account is used as staker and transaction sender, which is the most common case for
+    // regular users. This way, no separate signature request needs to be sent to the ledger to first create the staker
+    // signature proof, but both signatures are created in a single request for better UX. For advanced users, usage of
+    // a different staker than the transaction sender is still supported by providing a ready pre-signed signature proof
+    // in the request instead of an empty signature proof. Note that the staker signature proof is supposed to be signed
+    // on the transaction data with the empty signature proof, see verify_transaction_signature for incoming set to true
+    // in primitives/transaction/src/account/staking_contract/structs.rs, which is why we can conveniently use presence
+    // of the empty signature proof to detect, that we should create the staker signature before signing the transaction
+    // and directly sign it over the passed transaction with the empty proof.
+    bool created_staker_signature = false;
+    if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_STAKING_INCOMING
+        && ctx.req.tx.content.type_specific.staking_incoming_tx.has_validator_or_staker_signature_proof
+        && is_empty_default_signature_proof(
+            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof)
+    ) {
+        // Create the staker signature over the transaction with the empty signature proof in its data, which is exactly
+        // what the staker signatue must sign. Write the signature to a temporary buffer, instead of directly to the
+        // signature proof, to avoid writing to the data that is currently being signed. To save some stack space, we
+        // use G_io_apdu_buffer as that temporary buffer.
+        cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, NULL, 0,
+            G_io_apdu_buffer, 64, NULL);
+        // Overwrite the signature in the signature proof in rawTx via pointers in validator_or_staker_signature_proof
+        // which point to the original buffer.
+        os_memmove(ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.signature,
+            G_io_apdu_buffer, 64);
+        created_staker_signature = true;
+
+        // Similarly, overwrite the public key in the signature proof with the ledger account public key as staker, with
+        // G_io_apdu_buffer as temporary buffer again. Check with a compile time assertion that it can fit the temp data
+        _Static_assert(sizeof(cx_ecfp_public_key_t) <= IO_APDU_BUFFER_SIZE, "G_io_apdu_buffer does not fit public key");
+        cx_ecfp_public_key_t *temporary_public_key_pointer = (cx_ecfp_public_key_t*) G_io_apdu_buffer;
+        cx_ecfp_generate_pair(CX_CURVE_Ed25519, temporary_public_key_pointer, &privateKey, 1);
+        // copy public key little endian to big endian
+        for (uint8_t i = 0; i < 32; i++) {
+            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.public_key[i] =
+                temporary_public_key_pointer->W[64 - i];
+        }
+        if (temporary_public_key_pointer->W[32] & 1) {
+            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.public_key[31] |=
+                0x80;
+        }
+    }
+
+    // Create final transaction signature.
     // Note that we only generate the signature here. It's the calling library's responsibility to build an appropriate
     // signature proof or contract proof out of this signature, depending on the sender type.
 #if CX_APILEVEL >= 8
-    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, NULL, 0, G_io_apdu_buffer, sizeof(G_io_apdu_buffer), NULL);
+    tx = cx_eddsa_sign(&privateKey, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, NULL, 0, G_io_apdu_buffer, 64, NULL);
 #else
     tx = cx_eddsa_sign(&privateKey, NULL, CX_LAST, CX_SHA512, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, G_io_apdu_buffer);
 #endif
     os_memset(&privateKey, 0, sizeof(privateKey));
+
+    if (created_staker_signature) {
+        // Need to return the staker signature such that the caller can also update the staker signature proof in his tx
+        os_memmove(G_io_apdu_buffer + tx,
+            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.signature, 64);
+        tx += 64;
+    }
 
     G_io_apdu_buffer[tx++] = 0x90;
     G_io_apdu_buffer[tx++] = 0x00;

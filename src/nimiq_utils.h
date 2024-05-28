@@ -41,19 +41,6 @@
 //  reduced, thus ui steps skipped for short timeouts will be displayed even though we could skip them.
 #define HTLC_TIMEOUT_SOON_THRESHOLD (60 * 24 * 31 * 2); // ~ 2 months at 1 minute block time
 
-typedef struct {
-    // Currently only ed25519 without flags and only empty merkle paths are supported, therefore:
-    // - the public key is an ed25519 public key and the signature an ed25519 signature
-    // - no WebauthnExtraFields are present
-    // - no merkle path compressed vector or node hashes are present.
-    uint8_t *public_key; // pointer to a 32 byte ed25519 public key
-    // uint8_t *merkle_path_compressed; // NULL or a pointer to a VecU8
-    // uint8_t *merkle_path_node_hashes; // NULL or a pointer to a VecU8
-    uint8_t *signature; // pointer to a 64 byte ed25519 signature
-    uint8_t type_and_flags;
-    uint8_t merkle_path_length;
-} signature_proof_t;
-
 // Data printed for display.
 // Note that this does not include any information about where the funds are coming from (a regular account, htlc,
 // vesting contract, which address, ...) as this is not too relevant for the user and also not displayed by other apps
@@ -154,8 +141,6 @@ bool readBool(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 uint16_t readVecU8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint8_t **out_vecData);
 
 uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint32_t *out_bip32Path);
-
-signature_proof_t readSignatureProof(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
 
 bool isPrintableAscii(uint8_t *data, uint16_t dataLength);
 

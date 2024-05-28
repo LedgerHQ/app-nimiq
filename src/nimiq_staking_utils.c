@@ -19,6 +19,7 @@
 
 #include "nimiq_staking_utils.h"
 #include "nimiq_utils.h"
+#include "signature_proof.h"
 
 // Staking transactions
 // Incoming staking transactions are to the staking contract and encode their data in the recipient data, outgoing
@@ -38,7 +39,9 @@ void parse_staking_incoming_data(transaction_version_t version, uint8_t *data, u
     }
 
     uint8_t validator_or_staker_address_buffer[20];
-    uint8_t *validator_or_staker_address_pointer = validator_or_staker_address_buffer;
+    // NULL means not specified, which is then the same as sender, as we create the staker signature proof with the
+    // sender account, if the empty signature proof was provided, see transaction signing in main.c
+    uint8_t *effective_validator_or_staker_address = NULL;
 
     out->type = readUInt8(&data, &data_length);
     switch (out->type) {
@@ -60,7 +63,7 @@ void parse_staking_incoming_data(transaction_version_t version, uint8_t *data, u
         }
 
         case ADD_STAKE: {
-            validator_or_staker_address_pointer = readSubBuffer(20, &data, &data_length);
+            effective_validator_or_staker_address = readSubBuffer(20, &data, &data_length);
             break;
         }
 
@@ -79,14 +82,21 @@ void parse_staking_incoming_data(transaction_version_t version, uint8_t *data, u
 
     if (out->type != ADD_STAKE) {
         // All types but ADD_STAKE encode a validator or staker signature proof at the end of the data.
-        signature_proof_t validator_or_staker_signature_proof = readSignatureProof(&data, &data_length);
-        if (validator_or_staker_signature_proof.type_and_flags != 0
-            || validator_or_staker_signature_proof.merkle_path_length) {
+        out->has_validator_or_staker_signature_proof = true;
+        out->validator_or_staker_signature_proof = read_signature_proof(&data, &data_length);
+        if (out->validator_or_staker_signature_proof.type_and_flags != 0
+            || out->validator_or_staker_signature_proof.merkle_path_length) {
             // Currently only ed25519 and empty merkle paths are supported.
             PRINTF("Only ed25519 signature proofs without flags and merkle paths supported");
             THROW(0x6a80);
         }
-        public_key_to_address(validator_or_staker_signature_proof.public_key, validator_or_staker_address_pointer);
+        if (!is_empty_default_signature_proof(out->validator_or_staker_signature_proof)) {
+            public_key_to_address(out->validator_or_staker_signature_proof.public_key,
+                validator_or_staker_address_buffer);
+            effective_validator_or_staker_address = validator_or_staker_address_buffer;
+        }
+    } else {
+        out->has_validator_or_staker_signature_proof = false;
     }
 
     if (data_length != 0) {
@@ -96,8 +106,8 @@ void parse_staking_incoming_data(transaction_version_t version, uint8_t *data, u
 
     // Print the validator or staker address if it is different to the sender address.
     // Other parts of the signature proofs don't need to be displayed or verified as they're verified by network nodes.
-    if (memcmp(validator_or_staker_address_pointer, sender, 20)) {
-        print_address(validator_or_staker_address_pointer, out->validator_or_staker_address);
+    if (effective_validator_or_staker_address && memcmp(effective_validator_or_staker_address, sender, 20)) {
+        print_address(effective_validator_or_staker_address, out->validator_or_staker_address);
     } else {
         // The staker address is the same as the sender address. Note that different to parse_htlc_creation_data or
         // parse_vesting_creation_data we don't block non-basic sender types for staker creation here, because contract
@@ -131,7 +141,7 @@ staking_outgoing_data_type_t parse_staking_outgoing_data(transaction_version_t v
 bool is_staking_contract(uint8_t *address) {
     // Staking contract address consists of 19 value 0 bytes followed by 1 value 1 byte, see STAKING_CONTRACT_ADDRESS in
     // primitives/src/policy.rs in core-rs-albatross
-    for (uint8_t i = 0; i < 19; ++i) {
+    for (uint8_t i = 0; i < 19; i++) {
         if (address[i] != 0) return false;
     }
     return address[19] == 1;

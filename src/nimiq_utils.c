@@ -560,24 +560,6 @@ uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, ui
     return bip32PathLength;
 }
 
-signature_proof_t readSignatureProof(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
-    // See Serde::Serialize for SignatureProof in primitives/transaction/src/signature_proof.rs in core-rs-albatross.
-    signature_proof_t signatureProof;
-    signatureProof.type_and_flags = readUInt8(in_out_buffer, in_out_bufferLength);
-    if (signatureProof.type_and_flags != 0) {
-        PRINTF("Only ed25519 signature proofs without flags supported");
-        THROW(0x6a80);
-    }
-    signatureProof.public_key = readSubBuffer(32, in_out_buffer, in_out_bufferLength);
-    signatureProof.merkle_path_length = readUInt8(in_out_buffer, in_out_bufferLength);
-    if (signatureProof.merkle_path_length) {
-        PRINTF("Only signature proofs with empty merkle path supported");
-        THROW(0x6a80);
-    }
-    signatureProof.signature = readSubBuffer(64, in_out_buffer, in_out_bufferLength);
-    return signatureProof;
-}
-
 void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out) {
     if (version != TRANSACTION_VERSION_LEGACY && version != TRANSACTION_VERSION_ALBATROSS) {
         PRINTF("Unsupported transaction version");
