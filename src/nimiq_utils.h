@@ -94,12 +94,15 @@ typedef struct {
     } type_specific;
 
     transaction_type_t transaction_type;
+    transaction_label_type_t transaction_label_type;
+#ifdef HAVE_BAGL
     // "Transaction", "Cashlink", "HTLC / Swap", "Vesting", "Create Staker", "Add Stake", "Update Staker",
-    // "Set Active Stake", "Retire Stake", "Unstake"
-    char transaction_type_label[17];
+    // "Set Active Stake", "Retire Stake", "Unstake" + string terminator
+    char transaction_label[17];
+#endif
     char value[STRING_LENGTH_NIM_AMOUNT];
     char fee[STRING_LENGTH_NIM_AMOUNT];
-    char network[12]; // "Main", "Test", "Development" or "Bounty"
+    char network[12]; // "Main", "Test", "Development" or "Bounty" + string terminator
 } txContent_t;
 
 void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out);

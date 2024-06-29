@@ -17,7 +17,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+
+// From Ledger SDK
 #include "os.h"
+#include "lcx_blake2.h"
 
 #include "nimiq_utils.h"
 #include "nimiq_staking_utils.h"
@@ -643,7 +646,7 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
 
         switch (staking_outgoing_type) {
             case REMOVE_STAKE:
-                strcpy(out->transaction_type_label, "Unstake");
+                out->transaction_label_type = TRANSACTION_LABEL_TYPE_STAKING_REMOVE_STAKE;
                 break;
             default:
                 // Note that validator transactions are not supported yet.
@@ -673,7 +676,9 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
                 is_cashlink);
 
             out->transaction_type = TRANSACTION_TYPE_NORMAL;
-            strcpy(out->transaction_type_label, is_cashlink ? "Cashlink" : "Transaction");
+            out->transaction_label_type = is_cashlink
+                ? TRANSACTION_LABEL_TYPE_CASHLINK
+                : TRANSACTION_LABEL_TYPE_REGULAR_TRANSACTION;
 
             // Print the recipient address
             // We're ignoring the sender, as it's not too relevant where the funds are coming from.
@@ -697,12 +702,12 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
                 parse_vesting_creation_data(version, data, data_length, sender, sender_type, value,
                     &out->type_specific.vesting_creation_tx);
                 out->transaction_type = TRANSACTION_TYPE_VESTING_CREATION;
-                strcpy(out->transaction_type_label, "Vesting");
+                out->transaction_label_type = TRANSACTION_LABEL_TYPE_VESTING_CREATION;
             } else { // ACCOUNT_TYPE_HTLC
                 parse_htlc_creation_data(version, data, data_length, sender, sender_type, validity_start_height,
                     &out->type_specific.htlc_creation_tx);
                 out->transaction_type = TRANSACTION_TYPE_HTLC_CREATION;
-                strcpy(out->transaction_type_label, "HTLC / Swap");
+                out->transaction_label_type = TRANSACTION_LABEL_TYPE_HTLC_CREATION;
             }
             break;
         }
@@ -727,19 +732,19 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
 
             switch (out->type_specific.staking_incoming_tx.type) {
                 case CREATE_STAKER:
-                    strcpy(out->transaction_type_label, "Create Staker");
+                    out->transaction_label_type = TRANSACTION_LABEL_TYPE_STAKING_CREATE_STAKER;
                     break;
                 case ADD_STAKE:
-                    strcpy(out->transaction_type_label, "Add Stake");
+                    out->transaction_label_type = TRANSACTION_LABEL_TYPE_STAKING_ADD_STAKE;
                     break;
                 case UPDATE_STAKER:
-                    strcpy(out->transaction_type_label, "Update Staker");
+                    out->transaction_label_type = TRANSACTION_LABEL_TYPE_STAKING_UPDATE_STAKER;
                     break;
                 case SET_ACTIVE_STAKE:
-                    strcpy(out->transaction_type_label, "Set Active Stake");
+                    out->transaction_label_type = TRANSACTION_LABEL_TYPE_STAKING_SET_ACTIVE_STAKE;
                     break;
                 case RETIRE_STAKE:
-                    strcpy(out->transaction_type_label, "Retire Stake");
+                    out->transaction_label_type = TRANSACTION_LABEL_TYPE_STAKING_RETIRE_STAKE;
                     break;
                 default:
                     // Note that validator transactions are not supported yet.

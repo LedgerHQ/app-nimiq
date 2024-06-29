@@ -36,6 +36,30 @@
 #define MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX (0x1 << 0)
 #define MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH (0x1 << 1)
 
+// Max supported length for a transaction's serialized content, based on Albatross, where data is generally longer due
+// to added sender data and uint64 timestamps instead of uint32 block counts in vesting and htlc contracts. Sum of:
+// - Minimum of 67 bytes common to all transactions for recipient data length, sender address, sender type, recipient
+//   address, recipient type, value, fee, validity start height, network id, flags, sender data length (assuming sender
+//   data length being encoded in a single byte varint, i.e. sender data up to 127 bytes length), recipient data length.
+// - Sender or recipient data of up to 121 bytes. Note that currently, we don't support sender data and recipient data
+//   to be set at the same time. This number is the maximum of:
+//   1 byte sender data for OutgoingStakingTransactionData.
+//   64 bytes recipient data limit we set for basic transactions.
+//   52 bytes recipient data for fully specified VestingContract CreationTransactionData.
+//   114 bytes recipient data for HashedTimeLockedContract CreationTransactionData with Sha512 hash root.
+//   Staking recipient data for IncomingStakingTransactionData (including enum index), which can be:
+//     120 bytes for fully specified CreateStaker with ed25519 signature proof with empty merkle path.
+//     21 bytes for AddStake.
+//     121 bytes for fully specified UpdateStaker with ed25519 signature proof with empty merkle path.
+//     107 bytes for SetActiveStake.
+//     107 bytes for RetireStake.
+//     (Validator transactions are not covered yet, as not supported yet.)
+#define MAX_RAW_TX 188
+// Limit printable message length as Nano S has only about 4kB of RAM total, used for global vars and stack, and on top
+// of the message buffer, there is the buffer for the printed message, which is twice as large, see messageSigningContext_t
+// in globals.h Additionally, the paging ui displays only ~16 chars per page on Nano S.
+#define MAX_PRINTABLE_MESSAGE_LENGTH 160 // 10+ pages ascii or 20 pages hex on Nano S
+
 typedef enum {
     TRANSACTION_VERSION_LEGACY,
     TRANSACTION_VERSION_ALBATROSS,
@@ -62,6 +86,19 @@ typedef enum {
     TRANSACTION_TYPE_STAKING_INCOMING,
     TRANSACTION_TYPE_STAKING_OUTGOING,
 } transaction_type_t;
+
+typedef enum {
+    TRANSACTION_LABEL_TYPE_REGULAR_TRANSACTION,
+    TRANSACTION_LABEL_TYPE_CASHLINK,
+    TRANSACTION_LABEL_TYPE_VESTING_CREATION,
+    TRANSACTION_LABEL_TYPE_HTLC_CREATION,
+    TRANSACTION_LABEL_TYPE_STAKING_CREATE_STAKER,
+    TRANSACTION_LABEL_TYPE_STAKING_ADD_STAKE,
+    TRANSACTION_LABEL_TYPE_STAKING_UPDATE_STAKER,
+    TRANSACTION_LABEL_TYPE_STAKING_SET_ACTIVE_STAKE,
+    TRANSACTION_LABEL_TYPE_STAKING_RETIRE_STAKE,
+    TRANSACTION_LABEL_TYPE_STAKING_REMOVE_STAKE,
+} transaction_label_type_t;
 
 // Recipient data type for incoming transactions to the staking contract.
 typedef enum {
