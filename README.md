@@ -24,7 +24,7 @@ To remove the app from the device do:
 
 ## Testing
 
-The `./test` directory contains files for testing the transaction parser and some printing utilities. To build and execute the tests run `./test.sh`.
+The `./unit-tests` directory contains files for testing the transaction parser and some printing utilities. To build and execute the tests run `./test.sh`. They are currently outdated though.
 
 ## Key pair validation
 
