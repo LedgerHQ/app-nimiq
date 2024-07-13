@@ -117,7 +117,7 @@ UX_STEP_NOCB(
     {
         &C_icon_eye,
         "Confirm",
-        ctx.req.tx.content.transaction_label,
+        PARSED_TX.transaction_label,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_transaction_generic_flow_amount_step,
@@ -125,7 +125,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_generic_has_amount_entry(), // amount can be 0 for signaling transactions
     {
         "Amount",
-        ctx.req.tx.content.value,
+        PARSED_TX.value,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_transaction_generic_flow_fee_step,
@@ -133,14 +133,14 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_generic_has_fee_entry(),
     {
         "Fee",
-        ctx.req.tx.content.fee,
+        PARSED_TX.fee,
     });
 UX_STEP_NOCB(
     ux_transaction_generic_flow_network_step,
     paging,
     {
         "Network",
-        ctx.req.tx.content.network,
+        PARSED_TX.network,
     });
 UX_STEP_CB(
     ux_transaction_generic_flow_approve_step,
@@ -175,15 +175,15 @@ UX_STEP_NOCB(
     paging,
     {
         "Recipient",
-        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.recipient,
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.recipient,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_transaction_normal_or_staking_outgoing_flow_data_step,
     paging,
     ux_transaction_normal_or_staking_outgoing_has_data_entry(),
     {
-        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data_label,
-        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data,
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data_label,
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data,
     });
 
 UX_FLOW(ux_transaction_normal_or_staking_outgoing_flow,
@@ -206,7 +206,7 @@ UX_STEP_NOCB(
     paging,
     {
         "HTLC Recipient",
-        ctx.req.tx.content.type_specific.htlc_creation_tx.redeem_address,
+        PARSED_TX_HTLC_CREATION.redeem_address,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_htlc_creation_flow_refund_address_step,
@@ -214,14 +214,14 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_htlc_creation_has_refund_address_entry(),
     {
         "Refund to",
-        ctx.req.tx.content.type_specific.htlc_creation_tx.refund_address,
+        PARSED_TX_HTLC_CREATION.refund_address,
     });
 UX_STEP_NOCB(
     ux_htlc_creation_flow_hash_root_step,
     paging,
     {
         "Hashed Secret", // more user friendly label for hash root
-        ctx.req.tx.content.type_specific.htlc_creation_tx.hash_root,
+        PARSED_TX_HTLC_CREATION.hash_root,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_htlc_creation_flow_hash_algorithm_step,
@@ -229,7 +229,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_htlc_creation_has_hash_algorithm_entry(),
     {
         "Hash Algorithm",
-        ctx.req.tx.content.type_specific.htlc_creation_tx.hash_algorithm,
+        PARSED_TX_HTLC_CREATION.hash_algorithm,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_htlc_creation_flow_hash_count_step,
@@ -237,7 +237,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_htlc_creation_has_hash_count_entry(),
     {
         "Hash Steps", // more user friendly label for hash count
-        ctx.req.tx.content.type_specific.htlc_creation_tx.hash_count,
+        PARSED_TX_HTLC_CREATION.hash_count,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_htlc_creation_flow_timeout_step,
@@ -245,7 +245,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_htlc_creation_has_timeout_entry(),
     {
         "HTLC Expiry Block", // more user friendly label for timeout
-        ctx.req.tx.content.type_specific.htlc_creation_tx.timeout,
+        PARSED_TX_HTLC_CREATION.timeout,
     });
 
 UX_FLOW(ux_transaction_htlc_creation_flow,
@@ -273,7 +273,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_owner_address_entry(),
     {
         "Vesting Owner",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.owner_address,
+        PARSED_TX_VESTING_CREATION.owner_address,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_single_vesting_block_step, // simplified ui for step_count == 1 case
@@ -281,7 +281,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_single_vesting_block_entry(),
     {
         "Vested at Block",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_block,
+        PARSED_TX_VESTING_CREATION.first_step_block,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_start_block_step,
@@ -289,7 +289,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_start_and_period_and_step_count_and_step_duration_entries(),
     {
         "Vesting Start Block",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.start_block,
+        PARSED_TX_VESTING_CREATION.start_block,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_period_step,
@@ -297,7 +297,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_start_and_period_and_step_count_and_step_duration_entries(),
     {
         "Vesting Period",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.period,
+        PARSED_TX_VESTING_CREATION.period,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_step_count_step,
@@ -305,7 +305,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_start_and_period_and_step_count_and_step_duration_entries(),
     {
         "Vesting Steps",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.step_count,
+        PARSED_TX_VESTING_CREATION.step_count,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_step_block_count_step,
@@ -313,7 +313,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_start_and_period_and_step_count_and_step_duration_entries(),
     {
         "Blocks Per Step",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.step_block_count,
+        PARSED_TX_VESTING_CREATION.step_block_count,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_first_step_block_count_step,
@@ -321,7 +321,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_first_step_duration_entry(),
     {
         "First Step",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_block_count,
+        PARSED_TX_VESTING_CREATION.first_step_block_count,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_step_amount_step,
@@ -329,7 +329,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_step_amount_entry(),
     {
         "Vested per Step",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount,
+        PARSED_TX_VESTING_CREATION.step_amount,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_first_step_amount_step,
@@ -337,7 +337,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_first_step_amount_entry(),
     {
         "First Step",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_amount,
+        PARSED_TX_VESTING_CREATION.first_step_amount,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_last_step_amount_step,
@@ -345,7 +345,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_last_step_amount_entry(),
     {
         "Last Step",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.last_step_amount,
+        PARSED_TX_VESTING_CREATION.last_step_amount,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_vesting_creation_flow_pre_vested_amount_step,
@@ -353,7 +353,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_vesting_creation_has_pre_vested_amount_entry(),
     {
         "Pre-Vested",
-        ctx.req.tx.content.type_specific.vesting_creation_tx.pre_vested_amount,
+        PARSED_TX_VESTING_CREATION.pre_vested_amount,
     });
 
 UX_FLOW(ux_transaction_vesting_creation_flow,
@@ -386,7 +386,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry(),
     {
         "Amount",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.set_active_stake_or_retire_stake.amount,
+        PARSED_TX_STAKING_INCOMING.set_active_stake_or_retire_stake.amount,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_staking_incoming_flow_staker_address_step,
@@ -394,7 +394,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_staking_incoming_has_staker_address_entry(),
     {
         "Staker",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_address,
+        PARSED_TX_STAKING_INCOMING.validator_or_staker_address,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_staking_incoming_flow_create_staker_or_update_staker_delegation_step,
@@ -402,7 +402,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry(),
     {
         "Delegation",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker.delegation,
+        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker.delegation,
     });
 UX_OPTIONAL_STEP_NOCB(
     ux_staking_incoming_flow_update_staker_reactivate_all_stake_step,
@@ -410,7 +410,7 @@ UX_OPTIONAL_STEP_NOCB(
     ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry(),
     {
         "Reactivate all Stake",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker
+        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker
             .update_staker_reactivate_all_stake,
     });
 
@@ -542,37 +542,37 @@ void ui_public_key() {
 }
 
 void ui_transaction_signing() {
-    // The complete title will be "Confirm <ctx.req.tx.content.transaction_label>"
-    switch (ctx.req.tx.content.transaction_label_type) {
+    // The complete title will be "Confirm <PARSED_TX.transaction_label>"
+    switch (PARSED_TX.transaction_label_type) {
         case TRANSACTION_LABEL_TYPE_REGULAR_TRANSACTION:
-            strcpy(ctx.req.tx.content.transaction_label, "Transaction");
+            strcpy(PARSED_TX.transaction_label, "Transaction");
             break;
         case TRANSACTION_LABEL_TYPE_CASHLINK:
-            strcpy(ctx.req.tx.content.transaction_label, "Cashlink");
+            strcpy(PARSED_TX.transaction_label, "Cashlink");
             break;
         case TRANSACTION_LABEL_TYPE_VESTING_CREATION:
-            strcpy(ctx.req.tx.content.transaction_label, "Vesting");
+            strcpy(PARSED_TX.transaction_label, "Vesting");
             break;
         case TRANSACTION_LABEL_TYPE_HTLC_CREATION:
-            strcpy(ctx.req.tx.content.transaction_label, "HTLC / Swap");
+            strcpy(PARSED_TX.transaction_label, "HTLC / Swap");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_CREATE_STAKER:
-            strcpy(ctx.req.tx.content.transaction_label, "Create Staker");
+            strcpy(PARSED_TX.transaction_label, "Create Staker");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_ADD_STAKE:
-            strcpy(ctx.req.tx.content.transaction_label, "Add Stake");
+            strcpy(PARSED_TX.transaction_label, "Add Stake");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_UPDATE_STAKER:
-            strcpy(ctx.req.tx.content.transaction_label, "Update Staker");
+            strcpy(PARSED_TX.transaction_label, "Update Staker");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_SET_ACTIVE_STAKE:
-            strcpy(ctx.req.tx.content.transaction_label, "Set Active Stake");
+            strcpy(PARSED_TX.transaction_label, "Set Active Stake");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_RETIRE_STAKE:
-            strcpy(ctx.req.tx.content.transaction_label, "Retire Stake");
+            strcpy(PARSED_TX.transaction_label, "Retire Stake");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_REMOVE_STAKE:
-            strcpy(ctx.req.tx.content.transaction_label, "Unstake");
+            strcpy(PARSED_TX.transaction_label, "Unstake");
             break;
         default:
             PRINTF("Invalid transaction label type");
@@ -580,7 +580,7 @@ void ui_transaction_signing() {
     }
 
     const ux_flow_step_t* const * transaction_flow;
-    switch (ctx.req.tx.content.transaction_type) {
+    switch (PARSED_TX.transaction_type) {
         case TRANSACTION_TYPE_NORMAL:
         case TRANSACTION_TYPE_STAKING_OUTGOING:
             transaction_flow = ux_transaction_normal_or_staking_outgoing_flow;

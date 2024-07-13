@@ -24,15 +24,15 @@
 bool ux_transaction_generic_has_amount_entry() {
     // The transaction amount can be 0 for signaling transactions, in which case we want to show the amount given in the
     // IncomingStakingTransactionData instead, if applicable.
-    return strcmp(ctx.req.tx.content.value, "0 NIM") != 0;
+    return strcmp(PARSED_TX.value, "0 NIM") != 0;
 }
 
 bool ux_transaction_generic_has_fee_entry() {
-    return strcmp(ctx.req.tx.content.fee, "0 NIM") != 0;
+    return strcmp(PARSED_TX.fee, "0 NIM") != 0;
 }
 
 bool ux_transaction_normal_or_staking_outgoing_has_data_entry() {
-    return strlen(ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data);
+    return strlen(PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data);
 }
 
 // HTLC creation specific UI steps and flow
@@ -79,24 +79,23 @@ bool ux_transaction_normal_or_staking_outgoing_has_data_entry() {
 //   address (see above).
 
 bool ux_transaction_htlc_creation_has_refund_address_entry() {
-    return !ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address;
+    return !PARSED_TX_HTLC_CREATION.is_refund_address_sender_address;
 }
 
 bool ux_transaction_htlc_creation_has_hash_algorithm_entry() {
-    return !ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address
-        || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_timing_out_soon
-        || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_using_sha256;
+    return !PARSED_TX_HTLC_CREATION.is_refund_address_sender_address
+        || !PARSED_TX_HTLC_CREATION.is_timing_out_soon
+        || !PARSED_TX_HTLC_CREATION.is_using_sha256;
 }
 
 bool ux_transaction_htlc_creation_has_hash_count_entry() {
-    return strcmp(ctx.req.tx.content.type_specific.htlc_creation_tx.hash_count, "1") != 0
-        && (!ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address
-            || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_timing_out_soon);
+    return strcmp(PARSED_TX_HTLC_CREATION.hash_count, "1") != 0
+        && (!PARSED_TX_HTLC_CREATION.is_refund_address_sender_address || !PARSED_TX_HTLC_CREATION.is_timing_out_soon);
 }
 
 bool ux_transaction_htlc_creation_has_timeout_entry() {
-    return !ctx.req.tx.content.type_specific.htlc_creation_tx.is_refund_address_sender_address
-        || !ctx.req.tx.content.type_specific.htlc_creation_tx.is_timing_out_soon;
+    return !PARSED_TX_HTLC_CREATION.is_refund_address_sender_address
+        || !PARSED_TX_HTLC_CREATION.is_timing_out_soon;
 }
 
 // Vesting Contract Creation specific UI steps and flow
@@ -115,53 +114,48 @@ bool ux_transaction_htlc_creation_has_timeout_entry() {
 //   step amount as all steps differ from that.
 
 bool ux_transaction_vesting_creation_has_owner_address_entry() {
-    return !ctx.req.tx.content.type_specific.vesting_creation_tx.is_owner_address_sender_address;
+    return !PARSED_TX_VESTING_CREATION.is_owner_address_sender_address;
 }
 
 bool ux_transaction_vesting_creation_has_single_vesting_block_entry() {
     // simplified ui for step_count == 1 case
-    return !ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step;
+    return !PARSED_TX_VESTING_CREATION.is_multi_step;
 }
 
 bool ux_transaction_vesting_creation_has_start_and_period_and_step_count_and_step_duration_entries() {
-    return ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step;
+    return PARSED_TX_VESTING_CREATION.is_multi_step;
 }
 
 bool ux_transaction_vesting_creation_has_first_step_duration_entry() {
-    return ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+    return PARSED_TX_VESTING_CREATION.is_multi_step
         // The first step duration is different from the regular step duration.
-        && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_block_count,
-            ctx.req.tx.content.type_specific.vesting_creation_tx.step_block_count) != 0;
+        && strcmp(PARSED_TX_VESTING_CREATION.first_step_block_count, PARSED_TX_VESTING_CREATION.step_block_count) != 0;
 }
 
 bool ux_transaction_vesting_creation_has_step_amount_entry() {
-    return ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+    return PARSED_TX_VESTING_CREATION.is_multi_step
         // Skip if step_count == 2 and both steps differ from what would be the regular step amount.
         && !(
-            strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.step_count, "2") == 0
-                && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_amount,
-                    ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0
-                && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.last_step_amount,
-                    ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0
+            strcmp(PARSED_TX_VESTING_CREATION.step_count, "2") == 0
+                && strcmp(PARSED_TX_VESTING_CREATION.first_step_amount, PARSED_TX_VESTING_CREATION.step_amount) != 0
+                && strcmp(PARSED_TX_VESTING_CREATION.last_step_amount, PARSED_TX_VESTING_CREATION.step_amount) != 0
         );
 }
 
 bool ux_transaction_vesting_creation_has_first_step_amount_entry() {
-    return ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+    return PARSED_TX_VESTING_CREATION.is_multi_step
         // The first step amount is different from the regular step amount.
-        && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.first_step_amount,
-            ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0;
+        && strcmp(PARSED_TX_VESTING_CREATION.first_step_amount, PARSED_TX_VESTING_CREATION.step_amount) != 0;
 }
 
 bool ux_transaction_vesting_creation_has_last_step_amount_entry() {
-    return ctx.req.tx.content.type_specific.vesting_creation_tx.is_multi_step
+    return PARSED_TX_VESTING_CREATION.is_multi_step
         // The last step amount is different from the regular step amount.
-        && strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.last_step_amount,
-            ctx.req.tx.content.type_specific.vesting_creation_tx.step_amount) != 0;
+        && strcmp(PARSED_TX_VESTING_CREATION.last_step_amount, PARSED_TX_VESTING_CREATION.step_amount) != 0;
 }
 
 bool ux_transaction_vesting_creation_has_pre_vested_amount_entry() {
-    return strcmp(ctx.req.tx.content.type_specific.vesting_creation_tx.pre_vested_amount, "0 NIM") != 0;
+    return strcmp(PARSED_TX_VESTING_CREATION.pre_vested_amount, "0 NIM") != 0;
 }
 
 // Incoming staking transaction (transactions to the staking contract) specific UI steps and flow
@@ -192,28 +186,27 @@ bool ux_transaction_vesting_creation_has_pre_vested_amount_entry() {
 bool ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry() {
     // Show if it's a data type that specifies an amount in the data. Note that these are signaling transactions. I.e.
     // the regular transaction amount is 0, and not displayed.
-    return ctx.req.tx.content.type_specific.staking_incoming_tx.type == SET_ACTIVE_STAKE
-        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == RETIRE_STAKE;
+    return PARSED_TX_STAKING_INCOMING.type == SET_ACTIVE_STAKE
+        || PARSED_TX_STAKING_INCOMING.type == RETIRE_STAKE;
 }
 
 bool ux_transaction_staking_incoming_has_staker_address_entry() {
     // Show if it's a staker tx, as opposed to a validator tx, and staker address is set (i.e. it's different to sender)
-    return (ctx.req.tx.content.type_specific.staking_incoming_tx.type == CREATE_STAKER
-        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == ADD_STAKE
-        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == UPDATE_STAKER
-        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == SET_ACTIVE_STAKE
-        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == RETIRE_STAKE
-    ) && strlen(ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_address);
+    return (PARSED_TX_STAKING_INCOMING.type == CREATE_STAKER
+        || PARSED_TX_STAKING_INCOMING.type == ADD_STAKE
+        || PARSED_TX_STAKING_INCOMING.type == UPDATE_STAKER
+        || PARSED_TX_STAKING_INCOMING.type == SET_ACTIVE_STAKE
+        || PARSED_TX_STAKING_INCOMING.type == RETIRE_STAKE
+    ) && strlen(PARSED_TX_STAKING_INCOMING.validator_or_staker_address);
 }
 
 bool ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry() {
     // Show if it's a data type that potentially specifies a delegation address, and it is set.
-    return (ctx.req.tx.content.type_specific.staking_incoming_tx.type == CREATE_STAKER
-        || ctx.req.tx.content.type_specific.staking_incoming_tx.type == UPDATE_STAKER
-    ) && strlen(ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker.delegation);
+    return (PARSED_TX_STAKING_INCOMING.type == CREATE_STAKER || PARSED_TX_STAKING_INCOMING.type == UPDATE_STAKER)
+        && strlen(PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker.delegation);
 }
 
 bool ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry() {
     // Show reactivate_all_stake for data type UPDATE_STAKER.
-    return ctx.req.tx.content.type_specific.staking_incoming_tx.type == UPDATE_STAKER;
+    return PARSED_TX_STAKING_INCOMING.type == UPDATE_STAKER;
 }

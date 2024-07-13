@@ -105,10 +105,9 @@ unsigned int io_seproxyhal_on_transaction_approved() {
     // of the empty signature proof to detect, that we should create the staker signature before signing the transaction
     // and directly sign it over the passed transaction with the empty proof.
     bool created_staker_signature = false;
-    if (ctx.req.tx.content.transaction_type == TRANSACTION_TYPE_STAKING_INCOMING
-        && ctx.req.tx.content.type_specific.staking_incoming_tx.has_validator_or_staker_signature_proof
-        && is_empty_default_signature_proof(
-            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof)
+    if (PARSED_TX.transaction_type == TRANSACTION_TYPE_STAKING_INCOMING
+        && PARSED_TX_STAKING_INCOMING.has_validator_or_staker_signature_proof
+        && is_empty_default_signature_proof(PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof)
     ) {
         // Create the staker signature over the transaction with the empty signature proof in its data, which is exactly
         // what the staker signatue must sign. Write the signature to a temporary buffer, instead of directly to the
@@ -118,8 +117,7 @@ unsigned int io_seproxyhal_on_transaction_approved() {
             G_io_apdu_buffer, 64, NULL);
         // Overwrite the signature in the signature proof in rawTx via pointers in validator_or_staker_signature_proof
         // which point to the original buffer.
-        os_memmove(ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.signature,
-            G_io_apdu_buffer, 64);
+        os_memmove(PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof.signature, G_io_apdu_buffer, 64);
         created_staker_signature = true;
 
         // Similarly, overwrite the public key in the signature proof with the ledger account public key as staker, with
@@ -129,12 +127,11 @@ unsigned int io_seproxyhal_on_transaction_approved() {
         cx_ecfp_generate_pair(CX_CURVE_Ed25519, temporary_public_key_pointer, &privateKey, 1);
         // copy public key little endian to big endian
         for (uint8_t i = 0; i < 32; i++) {
-            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.public_key[i] =
+            PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof.public_key[i] =
                 temporary_public_key_pointer->W[64 - i];
         }
         if (temporary_public_key_pointer->W[32] & 1) {
-            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.public_key[31] |=
-                0x80;
+            PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof.public_key[31] |= 0x80;
         }
     }
 
@@ -150,8 +147,7 @@ unsigned int io_seproxyhal_on_transaction_approved() {
 
     if (created_staker_signature) {
         // Need to return the staker signature such that the caller can also update the staker signature proof in his tx
-        os_memmove(G_io_apdu_buffer + tx,
-            ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_signature_proof.signature, 64);
+        os_memmove(G_io_apdu_buffer + tx, PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof.signature, 64);
         tx += 64;
     }
 
@@ -383,8 +379,8 @@ void handleSignTx(uint8_t p1, uint8_t p2, uint8_t *dataBuffer, uint16_t dataLeng
         THROW(0x9000);
     }
 
-    os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
-    parseTx(ctx.req.tx.transactionVersion, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, &ctx.req.tx.content);
+    os_memset(&PARSED_TX, 0, sizeof(PARSED_TX));
+    parseTx(ctx.req.tx.transactionVersion, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, &PARSED_TX);
 
     ui_transaction_signing();
 
@@ -551,7 +547,7 @@ void handleApdu(volatile unsigned int *flags, volatile unsigned int *tx) {
             case 0x6000:
                 // Wipe the transaction context and report the exception
                 sw = e;
-                os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
+                os_memset(&PARSED_TX, 0, sizeof(PARSED_TX));
                 break;
             case 0x9000:
                 // All is well
@@ -616,7 +612,7 @@ void nimiq_main(void) {
                 case 0x6000:
                     // Wipe the transaction context and report the exception
                     sw = e;
-                    os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
+                    os_memset(&PARSED_TX, 0, sizeof(PARSED_TX));
                     break;
                 case 0x9000:
                     // All is well
@@ -726,7 +722,7 @@ __attribute__((section(".boot"))) int main(void) {
     os_boot();
 
     for (;;) {
-        os_memset(&ctx.req.tx.content, 0, sizeof(ctx.req.tx.content));
+        os_memset(&PARSED_TX, 0, sizeof(PARSED_TX));
 
         UX_INIT();
         BEGIN_TRY {

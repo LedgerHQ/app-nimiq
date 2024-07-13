@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
 
     char *filename = argv[1];
     uint8_t buffer[130];
-    txContent_t txContent;
+    parsed_tx_t parsed_tx;
 
     char expected_expected_data[] = "f! \" # $ % & ' ( ) * + , - . / : ; < = > ? @ [  ] ^ _ ` { | } ~o";
     char expected_recipient[] = "NQ12 DHBY 842X 6RP1 Y94E K854 EL9P 77H6 0JJ1";
@@ -39,41 +39,41 @@ int main(int argc, char *argv[]) {
     int read = read_file(filename, buffer, 4096);
     if (read) {
         // printHexBlocks(buffer, read/2);
-        parseTx(buffer, &txContent);
+        parseTx(buffer, &parsed_tx);
 
-        if (strcmp(txContent.details1, expected_expected_data) != 0) {
+        if (strcmp(parsed_tx.details1, expected_expected_data) != 0) {
             printf(
                 "parseTx failed on extra data. Expected: %s; Actual: %s\n",
                 expected_expected_data,
-                txContent.details1
+                parsed_tx.details1
             );
         }
-        if (strcmp(txContent.recipient, expected_recipient) != 0) {
+        if (strcmp(parsed_tx.recipient, expected_recipient) != 0) {
             printf(
                 "parseTx failed on recipient. Expected: %s; Actual: %s\n",
                 expected_recipient,
-                txContent.recipient
+                parsed_tx.recipient
             );
         }
-        if (strcmp(txContent.value, expected_amount) != 0) {
+        if (strcmp(parsed_tx.value, expected_amount) != 0) {
             printf(
                 "parseTx failed on amount. Expected: %s; Actual: %s\n",
                 expected_amount,
-                txContent.value
+                parsed_tx.value
             );
         }
-        if (strcmp(txContent.fee, expected_fee) != 0) {
+        if (strcmp(parsed_tx.fee, expected_fee) != 0) {
             printf(
                 "parseTx failed on fee. Expected: %s; Actual: %s\n",
                 expected_fee,
-                txContent.fee
+                parsed_tx.fee
             );
         }
-        if (strcmp(txContent.validity_start, expected_validity_start) != 0) {
+        if (strcmp(parsed_tx.validity_start, expected_validity_start) != 0) {
             printf(
                 "parseTx failed on validity start. Expected: %s; Actual: %s\n",
                 expected_validity_start,
-                txContent.validity_start
+                parsed_tx.validity_start
             );
         }
     }

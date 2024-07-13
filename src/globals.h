@@ -52,7 +52,7 @@ typedef struct transactionContext_t {
     transaction_version_t transactionVersion;
     uint8_t rawTx[MAX_RAW_TX];
     uint32_t rawTxLength;
-    txContent_t content;
+    parsed_tx_t parsed;
 } transactionContext_t;
 
 // Printed message buffer length dimension chosen such that it can hold the printed uint32 message length
@@ -96,5 +96,12 @@ typedef struct {
 
 // extern variable, shared across .c files. Declared in globals.c
 extern generalContext_t ctx;
+
+// Shortcuts for parsed transaction data
+#define PARSED_TX (ctx.req.tx.parsed)
+#define PARSED_TX_NORMAL_OR_STAKING_OUTGOING (PARSED_TX.type_specific.normal_or_staking_outgoing_tx)
+#define PARSED_TX_VESTING_CREATION (PARSED_TX.type_specific.vesting_creation_tx)
+#define PARSED_TX_HTLC_CREATION (PARSED_TX.type_specific.htlc_creation_tx)
+#define PARSED_TX_STAKING_INCOMING (PARSED_TX.type_specific.staking_incoming_tx)
 
 #endif // _NIMIQ_GLOBALS_H_

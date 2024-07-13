@@ -563,7 +563,7 @@ uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, ui
     return bip32PathLength;
 }
 
-void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out) {
+void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, parsed_tx_t *out) {
     if (version != TRANSACTION_VERSION_LEGACY && version != TRANSACTION_VERSION_ALBATROSS) {
         PRINTF("Unsupported transaction version");
         THROW(0x6a80);

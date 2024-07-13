@@ -180,26 +180,26 @@ static void ui_transaction_prepare_review_entries_normal_or_staking_outgoing() {
     review_entries_initialize();
     review_entries_add_optional(
         "Amount",
-        ctx.req.tx.content.value,
+        PARSED_TX.value,
         ux_transaction_generic_has_amount_entry()
     );
     review_entries_add(
         "Recipient",
-        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.recipient
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.recipient
     );
     review_entries_add_optional(
-        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data_label,
-        ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data,
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data_label,
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data,
         ux_transaction_normal_or_staking_outgoing_has_data_entry()
     );
     review_entries_add_optional(
         "Fee",
-        ctx.req.tx.content.fee,
+        PARSED_TX.fee,
         ux_transaction_generic_has_fee_entry()
     );
     review_entries_add(
         "Network",
-        ctx.req.tx.content.network
+        PARSED_TX.network
     );
 }
 
@@ -208,39 +208,39 @@ static void ui_transaction_prepare_review_entries_staking_incoming() {
     // Amount for non-signaling transactions
     review_entries_add_optional(
         "Amount",
-        ctx.req.tx.content.value,
+        PARSED_TX.value,
         ux_transaction_generic_has_amount_entry()
     );
     // Amount in incoming staking data for signaling transactions
     review_entries_add_optional(
         "Amount",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.set_active_stake_or_retire_stake.amount,
+        PARSED_TX_STAKING_INCOMING.set_active_stake_or_retire_stake.amount,
         ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry()
     );
     review_entries_add_optional(
         "Staker",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_address,
+        PARSED_TX_STAKING_INCOMING.validator_or_staker_address,
         ux_transaction_staking_incoming_has_staker_address_entry()
     );
     review_entries_add_optional(
         "Delegation",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker.delegation,
+        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker.delegation,
         ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry()
     );
     review_entries_add_optional(
         "Reactivate all Stake",
-        ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker
+        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker
             .update_staker_reactivate_all_stake,
         ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry()
     );
     review_entries_add_optional(
         "Fee",
-        ctx.req.tx.content.fee,
+        PARSED_TX.fee,
         ux_transaction_generic_has_fee_entry()
     );
     review_entries_add(
         "Network",
-        ctx.req.tx.content.network
+        PARSED_TX.network
     );
 }
 
@@ -262,7 +262,7 @@ void ui_transaction_signing() {
     const char *review_title;
     const char *finish_title;
     const char *review_subtitle = NULL; // none by default
-    switch (ctx.req.tx.content.transaction_label_type) {
+    switch (PARSED_TX.transaction_label_type) {
         case TRANSACTION_LABEL_TYPE_REGULAR_TRANSACTION:
             review_title = "Review transaction\nto send NIM";
             finish_title = "Sign transaction\nto send NIM";
@@ -314,7 +314,7 @@ void ui_transaction_signing() {
             THROW(0x6a80);
     }
 
-    switch (ctx.req.tx.content.transaction_type) {
+    switch (PARSED_TX.transaction_type) {
         case TRANSACTION_TYPE_NORMAL:
         case TRANSACTION_TYPE_STAKING_OUTGOING:
             ui_transaction_prepare_review_entries_normal_or_staking_outgoing();

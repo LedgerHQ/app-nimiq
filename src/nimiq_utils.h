@@ -20,8 +20,10 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+
 #include "constants.h"
 #include "nimiq_staking_utils.h"
+
 #ifdef TEST
 #include <stdio.h>
 #define THROW(code) { printf("error: %d", code); return; }
@@ -76,7 +78,7 @@ typedef struct {
     char step_block_count[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
     // Note: first_step_block_count, first_step_block, first_step_amount and pre_vested_amount are not all needed at the
     // same time and could therefore be moved into a union to save some memory. As however tx_data_htlc_creation_t in
-    // the txContent_t.type_specific union is bigger anyways, we currently don't have to do this optimization.
+    // the parsed_tx_t.type_specific union is bigger anyways, we currently don't have to do this optimization.
     char first_step_block_count[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
     char first_step_block[STRING_LENGTH_UINT32];
     char step_amount[STRING_LENGTH_NIM_AMOUNT];
@@ -103,9 +105,9 @@ typedef struct {
     char value[STRING_LENGTH_NIM_AMOUNT];
     char fee[STRING_LENGTH_NIM_AMOUNT];
     char network[12]; // "Main", "Test", "Development" or "Bounty" + string terminator
-} txContent_t;
+} parsed_tx_t;
 
-void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, txContent_t *out);
+void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, parsed_tx_t *out);
 
 void public_key_to_address(uint8_t *in, uint8_t *out);
 
