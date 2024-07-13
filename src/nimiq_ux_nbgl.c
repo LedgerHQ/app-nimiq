@@ -98,108 +98,147 @@ void ui_public_key() {
 
 //////////////////////////////////////////////////////////////////////
 
-// Transaction signing UI
+// NBGL review utils
 
-// NBGL specific transaction utils
-// The flow with the most potential entries is the vesting creation flow. the maximum entries it can display are:
+// The review with the most potential entries is the vesting creation flow. The maximum entries it can display are:
 // amount, owner address, start, period, step count, step duration, first step duration, step amount, first step amount,
 // last step amount, fee, network. Note that the single-block block entry and the multi-block vesting entries can not
 // appear at the same time, same for the entry for the pre-vested amount and first step amount.
-#define TRANSACTION_REVIEW_MAX_ENTRIES_COUNT 12
+#define REVIEW_ENTRIES_MAX_COUNT 12
 static struct {
-    nbgl_contentTagValueList_t list;
-    nbgl_contentTagValue_t entries[TRANSACTION_REVIEW_MAX_ENTRIES_COUNT];
-} transaction_review_entries;
+    nbgl_contentTagValue_t entries[REVIEW_ENTRIES_MAX_COUNT];
+    uint8_t count;
+} review_entries;
 
-static void transaction_review_entries_initialize() {
-    // Initialize the structure with zeroes, including the list's .nbPairs (empty list), .nbMaxLinesForValue (no limit
-    // of lines to display) and .smallCaseForValue (use regular font), as well as the entries' .forcePageStart (don't
+static void review_entries_initialize() {
+    // Initialize the structure with zeroes, including setting the count to 0, and the entries' .forcePageStart (don't
     // enforce a new page by default), .centeredInfo (don't center entry vertically) and .aliasValue (display full
-    // values and no alias).
-    memset(&transaction_review_entries, 0, sizeof(transaction_review_entries));
-    transaction_review_entries.list.pairs = transaction_review_entries.entries;
-    transaction_review_entries.list.wrapping = true; // Prefer wrapping on spaces, for example for nicer address format.
+    // values and no alias) to 0 / false.
+    memset(&review_entries, 0, sizeof(review_entries));
 }
 
-static void transaction_review_entries_add(const char *item, const char *value) {
-    if (transaction_review_entries.list.nbPairs >= TRANSACTION_REVIEW_MAX_ENTRIES_COUNT) {
+static void review_entries_add(const char *item, const char *value) {
+    if (review_entries.count >= REVIEW_ENTRIES_MAX_COUNT) {
         PRINTF("Too many nbgl transaction ui entries");
         THROW(0x6700);
     }
-    transaction_review_entries.entries[transaction_review_entries.list.nbPairs].item = item;
-    transaction_review_entries.entries[transaction_review_entries.list.nbPairs].value = value;
-    transaction_review_entries.list.nbPairs++;
+    review_entries.entries[review_entries.count].item = item;
+    review_entries.entries[review_entries.count].value = value;
+    review_entries.count++;
 }
-#undef TRANSACTION_REVIEW_MAX_ENTRIES_COUNT
+#undef REVIEW_ENTRIES_MAX_COUNT
 
-static void transaction_review_entries_add_optional(const char *item, const char *value, bool condition) {
+static void review_entries_add_optional(const char *item, const char *value, bool condition) {
     if (!condition) return;
-    transaction_review_entries_add(item, value);
+    review_entries_add(item, value);
 }
 
-static void transaction_review_entries_prepare_normal_or_staking_outgoing() {
-    transaction_review_entries_initialize();
-    transaction_review_entries_add_optional(
+static void review_entries_launch_use_case_review(
+    nbgl_operationType_t operation_type,
+    const nbgl_icon_details_t *icon,
+    const char *review_title,
+    const char *review_subtitle,
+    const char *finish_title,
+    nbgl_choiceCallback_t choice_callback,
+    bool use_small_font
+) {
+    // The tagValueList gets copied in nbgl_useCaseReview, therefore it's sufficient to initialize it only in temporary
+    // memory. We use G_io_apdu buffer as temporary buffer, to save some stack space, and check that it can fit the data
+    // with a compile time assertion. Note that the entries are not copied, and we therefore have them in global memory.
+    _Static_assert(sizeof(nbgl_contentTagValueList_t) <= IO_APDU_BUFFER_SIZE, "G_io_apdu_buffer can't fit review list");
+    nbgl_contentTagValueList_t *temporary_tag_value_list_pointer = (nbgl_contentTagValueList_t*) G_io_apdu_buffer;
+    // Initialize list with zeroes, including .nbMaxLinesForValue (no limit of lines to display).
+    memset(temporary_tag_value_list_pointer, 0, sizeof(nbgl_contentTagValueList_t));
+    temporary_tag_value_list_pointer->wrapping = true; // Prefer wrapping on spaces, e.g. for nicer address formatting.
+    temporary_tag_value_list_pointer->smallCaseForValue = use_small_font;
+    temporary_tag_value_list_pointer->pairs = review_entries.entries;
+    temporary_tag_value_list_pointer->nbPairs = review_entries.count;
+
+    nbgl_useCaseReview(
+        operation_type,
+        temporary_tag_value_list_pointer,
+        icon,
+        review_title,
+        review_subtitle,
+        finish_title,
+        choice_callback
+    );
+
+    // Make sure that the list was in fact copied, to detect if that ever changes internally in nbgl_useCaseReview.
+    // Unfortunately, we can't easily memcmp via a pointer to where the data is copied to, as the data is copied to a
+    // static variable in nbgl_use_case.c and there's also no non-static method that exposes pointers to it. Instead, we
+    // reset the temporary buffer, to make it immediately noticeable via Ragger end-to-end tests if the data was not
+    // copied. Use explicit_bzero instead of memset to avoid this being optimized away.
+    explicit_bzero(temporary_tag_value_list_pointer, sizeof(nbgl_contentTagValueList_t));
+}
+
+//////////////////////////////////////////////////////////////////////
+
+// Transaction signing UI
+
+static void ui_transaction_prepare_review_entries_normal_or_staking_outgoing() {
+    review_entries_initialize();
+    review_entries_add_optional(
         "Amount",
         ctx.req.tx.content.value,
         ux_transaction_generic_has_amount_entry()
     );
-    transaction_review_entries_add(
+    review_entries_add(
         "Recipient",
         ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.recipient
     );
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data_label,
         ctx.req.tx.content.type_specific.normal_or_staking_outgoing_tx.extra_data,
         ux_transaction_normal_or_staking_outgoing_has_data_entry()
     );
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         "Fee",
         ctx.req.tx.content.fee,
         ux_transaction_generic_has_fee_entry()
     );
-    transaction_review_entries_add(
+    review_entries_add(
         "Network",
         ctx.req.tx.content.network
     );
 }
 
-static void transaction_review_entries_prepare_staking_incoming() {
-    transaction_review_entries_initialize();
+static void ui_transaction_prepare_review_entries_staking_incoming() {
+    review_entries_initialize();
     // Amount for non-signaling transactions
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         "Amount",
         ctx.req.tx.content.value,
         ux_transaction_generic_has_amount_entry()
     );
     // Amount in incoming staking data for signaling transactions
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         "Amount",
         ctx.req.tx.content.type_specific.staking_incoming_tx.set_active_stake_or_retire_stake.amount,
         ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry()
     );
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         "Staker",
         ctx.req.tx.content.type_specific.staking_incoming_tx.validator_or_staker_address,
         ux_transaction_staking_incoming_has_staker_address_entry()
     );
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         "Delegation",
         ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker.delegation,
         ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry()
     );
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         "Reactivate all Stake",
         ctx.req.tx.content.type_specific.staking_incoming_tx.create_staker_or_update_staker
             .update_staker_reactivate_all_stake,
         ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry()
     );
-    transaction_review_entries_add_optional(
+    review_entries_add_optional(
         "Fee",
         ctx.req.tx.content.fee,
         ux_transaction_generic_has_fee_entry()
     );
-    transaction_review_entries_add(
+    review_entries_add(
         "Network",
         ctx.req.tx.content.network
     );
@@ -278,10 +317,10 @@ void ui_transaction_signing() {
     switch (ctx.req.tx.content.transaction_type) {
         case TRANSACTION_TYPE_NORMAL:
         case TRANSACTION_TYPE_STAKING_OUTGOING:
-            transaction_review_entries_prepare_normal_or_staking_outgoing();
+            ui_transaction_prepare_review_entries_normal_or_staking_outgoing();
             break;
         case TRANSACTION_TYPE_STAKING_INCOMING:
-            transaction_review_entries_prepare_staking_incoming();
+            ui_transaction_prepare_review_entries_staking_incoming();
             break;
         case TRANSACTION_TYPE_VESTING_CREATION:
         case TRANSACTION_TYPE_HTLC_CREATION:
@@ -290,14 +329,14 @@ void ui_transaction_signing() {
             THROW(0x6a80);
     }
 
-    nbgl_useCaseReview(
-        /* operationType */ TYPE_TRANSACTION,
-        /* tagValueList */ &transaction_review_entries.list,
+    review_entries_launch_use_case_review(
+        /* operation_type */ TYPE_TRANSACTION,
         /* icon */ &C_app_nimiq_64px,
-        /* reviewTitle */ review_title,
-        /* reviewSubTitle */ review_subtitle,
-        /* finishTitle */ finish_title,
-        /* choiceCallback */ on_transaction_reviewed
+        /* review_title */ review_title,
+        /* review_subtitle */ review_subtitle,
+        /* finish_title */ finish_title,
+        /* choice_callback */ on_transaction_reviewed,
+        /* use_small_font */ false
     );
 }
 
@@ -305,13 +344,15 @@ void ui_transaction_signing() {
 
 // Message signing UI
 
-// Although we only have a single entry with fixed content, these are currenlty not const globals stored in the read-
-// only data segment of the app, i.e. in the flash memory and not in RAM, as this errors with a segmentation faul. It
-// seems like the PIC macro is missing in some places in nbgl_use_case.h to convert the link addresses of pointers in
-// the structures to their runtime addresses for pointers encoded in const data (see documentation). For this reason, we
-// currently have them in RAM, which is not ideal as the RAM is very limited.
-nbgl_contentTagValue_t message_review_entry;
-nbgl_contentTagValueList_t message_review_list;
+static void ui_message_prepare_review_entries(message_display_type_t messageDisplayType) {
+    review_entries_initialize();
+    ctx.req.msg.confirm.displayType = messageDisplayType; // used in ux_message_signing_prepare_printed_message
+    ux_message_signing_prepare_printed_message();
+    review_entries_add(
+        ctx.req.msg.confirm.printedMessageLabel,
+        ctx.req.msg.confirm.printedMessage
+    );
+}
 
 // Called when long press button on 3rd page is long-touched or when reject footer is touched.
 static void on_message_reviewed(bool approved) {
@@ -325,7 +366,6 @@ static void on_message_reviewed(bool approved) {
 }
 
 void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
-    ctx.req.msg.confirm.displayType = messageDisplayType;
     UNUSED(startAtMessageDisplay);
 
     // Pointer to pre-existing const strings in read-only data segment / flash memory. Not meant to be written to.
@@ -344,22 +384,16 @@ void ui_message_signing(message_display_type_t messageDisplayType, bool startAtM
             PRINTF("Invalid message display type");
             THROW(0x6a80);
     }
-    ux_message_signing_prepare_printed_message();
+    ui_message_prepare_review_entries(messageDisplayType);
 
-    message_review_entry.item = ctx.req.msg.confirm.printedMessageLabel,
-    message_review_entry.value = ctx.req.msg.confirm.printedMessage,
-    message_review_list.nbPairs = 1,
-    message_review_list.pairs = &message_review_entry,
-    message_review_list.smallCaseForValue = true, // use a smaller font
-    message_review_list.wrapping = true, // prefer wrapping on spaces
-    nbgl_useCaseReview(
-        /* operationType */ TYPE_MESSAGE,
-        /* tagValueList */ &message_review_list,
+    review_entries_launch_use_case_review(
+        /* operation_type */ TYPE_MESSAGE,
         /* icon */ &C_Review_64px, // provided by ledger-secure-sdk
-        /* reviewTitle */ "Review message",
-        /* reviewSubTitle */ review_subtitle,
-        /* finishTitle */ "Sign message",
-        /* choiceCallback */ on_message_reviewed
+        /* review_title */ "Review message",
+        /* review_subtitle */ review_subtitle,
+        /* finish_title */ "Sign message",
+        /* choice_callback */ on_message_reviewed,
+        /* use_small_font */ true
     );
 }
 
