@@ -18,15 +18,39 @@
 ifeq ($(BOLOS_SDK),)
 $(error Environment variable BOLOS_SDK is not set)
 endif
+
 include $(BOLOS_SDK)/Makefile.defines
 
-APPNAME = Nimiq
-APP_LOAD_PARAMS=--appFlags 0x240 --path "44'/242'" --curve ed25519 $(COMMON_LOAD_PARAMS)
 
-APPVERSION_M=1
-APPVERSION_N=4
-APPVERSION_P=6
-APPVERSION=$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)
+##############################
+#      App description       #
+##############################
+
+# Application name
+APPNAME = Nimiq
+
+# Application version
+APPVERSION_M = 1
+APPVERSION_N = 4
+APPVERSION_P = 6
+APPVERSION = "$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)"
+
+# Setting to allow building variant applications. For now, there are no variants, only the main Nimiq app.
+VARIANT_PARAM = COIN
+VARIANT_VALUES = nimiq
+
+
+##############################
+#       Source files         #
+##############################
+
+# Application source files
+APP_SOURCE_PATH += src
+
+# For now, don't include standard app files, as our code is not currently using the new common / standard app utilities,
+# with the advantage of not including any utilities we don't use, but of the downside of having to maintain these common
+# code utilities ourselves.
+DISABLE_STANDARD_APP_FILES = 1
 
 # Application icons following the guidelines:
 # https://developers.ledger.com/docs/device-app/deliver/deliverables/icons
@@ -44,160 +68,49 @@ APPVERSION=$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)
 # - Set the Layer > Layer Boundary Size to the intended size of the final image, centering the content. Then Image > Fit
 #   Canvas to Layers.
 # - Export the image as gif, which should be saved with the desired bits per pixel, if following these steps.
-ifeq ($(TARGET_NAME), TARGET_NANOS)
-ICONNAME=icons/app_nimiq_16px.gif
-endif
-ifeq ($(TARGET_NAME), $(filter $(TARGET_NAME), TARGET_NANOX TARGET_NANOS2))
-ICONNAME=icons/app_nimiq_14px.gif
-endif
-ifeq ($(TARGET_NAME), TARGET_STAX)
-ICONNAME=icons/app_nimiq_32px.gif
-endif
-ifeq ($(TARGET_NAME), TARGET_FLEX)
-ICONNAME=icons/app_nimiq_40px.gif
-endif
+ICON_NANOS = icons/app_nimiq_16px.gif
+ICON_NANOX = icons/app_nimiq_14px.gif
+ICON_NANOSP = icons/app_nimiq_14px.gif
+ICON_STAX = icons/app_nimiq_32px.gif
+ICON_FLEX = icons/app_nimiq_40px.gif
 
-################
-# Default rule #
-################
-all: default
 
-############
-# Platform #
-############
+##############################
+#  Permissions and features  #
+##############################
 
-DEFINES   += OS_IO_SEPROXYHAL
-DEFINES   += HAVE_SPRINTF HAVE_SNPRINTF_FORMAT_U
-DEFINES   += HAVE_IO_USB HAVE_L4_USBLIB IO_USB_MAX_ENDPOINTS=4 IO_HID_EP_LENGTH=64 HAVE_USB_APDU
-DEFINES   += LEDGER_MAJOR_VERSION=$(APPVERSION_M) LEDGER_MINOR_VERSION=$(APPVERSION_N) LEDGER_PATCH_VERSION=$(APPVERSION_P)
+# Application allowed derivation curves.
+CURVE_APP_LOAD_PARAMS = ed25519
+
+# Application allowed derivation paths.
+PATH_APP_LOAD_PARAMS = "44'/242'"
+
+# See SDK `include/appflags.h` for the purpose of each permission
+HAVE_APPLICATION_FLAG_GLOBAL_PIN = 1
+#HAVE_APPLICATION_FLAG_BOLOS_SETTINGS = 1 # Automatically set in Makefile.standard_app for devices with bluetooth
+
+ENABLE_BLUETOOTH = 1
+ENABLE_NBGL_QRCODE = 1
 
 # U2F
+# U2F has been deprecated by Ledger, disabled in most apps and is not configured in $(BOLOS_SDK)/Makefile.standard_app,
+# but we keep it for now as Nimiq is a browser centric coin, and Firefox and Safari don't support WebHID or WebUSB yet.
+# Note though that U2F is somewhat memory hungry, apart from the significant UX flaws. Also see:
+# https://www.ledger.com/windows-10-update-sunsetting-u2f-tunnel-transport-for-ledger-devices
+# https://developers.ledger.com/docs/connectivity/ledgerJS/faq/U2F
 DEFINES   += HAVE_IO_U2F
 DEFINES   += U2F_PROXY_MAGIC=\"w0w\"
 DEFINES   += U2F_REQUEST_TIMEOUT=28000 # 28 seconds
-DEFINES   += USB_SEGMENT_SIZE=64
-DEFINES   += BLE_SEGMENT_SIZE=32 #max MTU, min 20
-DEFINES   += UNUSED\(x\)=\(void\)x
-DEFINES   += APPVERSION=\"$(APPVERSION)\"
+SDK_SOURCE_PATH += lib_u2f
 
-#WEBUSB_URL     = www.ledgerwallet.com
-#DEFINES       += HAVE_WEBUSB WEBUSB_URL_SIZE_B=$(shell echo -n $(WEBUSB_URL) | wc -c) WEBUSB_URL=$(shell echo -n $(WEBUSB_URL) | sed -e "s/./\\\'\0\\\',/g")
-DEFINES   += HAVE_WEBUSB WEBUSB_URL_SIZE_B=0 WEBUSB_URL=""
+# Enabling DEBUG flag will enable PRINTF and disable optimizations
+# Instead of setting it here you can also enable this flag during compilation via `make DEBUG=1`
+#DEBUG = 1
 
-ifeq ($(TARGET_NAME),TARGET_NANOS)
-DEFINES		  += IO_SEPROXYHAL_BUFFER_SIZE_B=128
-else
-DEFINES		  += IO_SEPROXYHAL_BUFFER_SIZE_B=300
-endif
+# Extend the base Makefile for standard apps
+include $(BOLOS_SDK)/Makefile.standard_app
 
-ifeq ($(TARGET_NAME),$(filter $(TARGET_NAME), TARGET_NANOX TARGET_STAX TARGET_FLEX))
-DEFINES       += HAVE_BLE BLE_COMMAND_TIMEOUT_MS=2000
-DEFINES       += HAVE_BLE_APDU # basic ledger apdu transport over BLE
-SDK_SOURCE_PATH  += lib_blewbxx lib_blewbxx_impl
-endif
-
-ifeq ($(TARGET_NAME),TARGET_NANOS)
-DEFINES       += HAVE_BAGL BAGL_WIDTH=128 BAGL_HEIGHT=32
-DEFINES       += HAVE_UX_FLOW
-endif
-
-ifeq ($(TARGET_NAME),$(filter $(TARGET_NAME), TARGET_NANOX TARGET_NANOS2))
-DEFINES       += HAVE_BAGL BAGL_WIDTH=128 BAGL_HEIGHT=64
-DEFINES       += HAVE_BAGL_ELLIPSIS # long label truncation feature
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_REGULAR_11PX
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_EXTRABOLD_11PX
-DEFINES       += HAVE_BAGL_FONT_OPEN_SANS_LIGHT_16PX
-DEFINES       += HAVE_UX_FLOW
-endif
-
-ifeq ($(TARGET_NAME),$(filter $(TARGET_NAME), TARGET_STAX TARGET_FLEX))
-# For Stax or Flex NBGL must be used
-USE_NBGL = 1
-DEFINES += HAVE_INAPP_BLE_PAIRING
-DEFINES += HAVE_NBGL
-DEFINES += HAVE_PIEZO_SOUND
-DEFINES += HAVE_SE_TOUCH
-DEFINES += HAVE_SE_EINK_DISPLAY
-DEFINES += NBGL_PAGE
-DEFINES += NBGL_USE_CASE
-DEFINES += SCREEN_SIZE_WALLET
-DEFINES += NBGL_QRCODE
-SDK_SOURCE_PATH += qrcode
-ifeq ($(TARGET_NAME),TARGET_STAX)
-DEFINES += HAVE_BAGL_FONT_INTER_REGULAR_24PX
-DEFINES += HAVE_BAGL_FONT_INTER_SEMIBOLD_24PX
-DEFINES += HAVE_BAGL_FONT_INTER_MEDIUM_32PX
-endif
-ifeq ($(TARGET_NAME),TARGET_FLEX)
-DEFINES += HAVE_BAGL_FONT_INTER_REGULAR_28PX
-DEFINES += HAVE_BAGL_FONT_INTER_SEMIBOLD_28PX
-DEFINES += HAVE_BAGL_FONT_INTER_MEDIUM_36PX
-DEFINES += HAVE_FAST_HOLD_TO_APPROVE
-endif
-endif
-
-# Enabling debug PRINTF
-DEBUG = 0
-ifneq ($(DEBUG),0)
-        ifeq ($(TARGET_NAME),TARGET_NANOS)
-                DEFINES   += HAVE_PRINTF PRINTF=screen_printf
-        else
-                DEFINES   += HAVE_PRINTF PRINTF=mcu_usb_printf
-        endif
-else
-        DEFINES   += PRINTF\(...\)=
-endif
-
-
-
-##############
-# Compiler #
-##############
-ifneq ($(BOLOS_ENV),)
-$(info BOLOS_ENV=$(BOLOS_ENV))
-CLANGPATH := $(BOLOS_ENV)/clang-arm-fropi/bin/
-GCCPATH := $(BOLOS_ENV)/gcc-arm-none-eabi-5_3-2016q1/bin/
-else
-$(info BOLOS_ENV is not set: falling back to CLANGPATH and GCCPATH)
-endif
-ifeq ($(CLANGPATH),)
-$(info CLANGPATH is not set: clang will be used from PATH)
-endif
-ifeq ($(GCCPATH),)
-$(info GCCPATH is not set: arm-none-eabi-* will be used from PATH)
-endif
-
-CC       := $(CLANGPATH)clang
-
-#CFLAGS   += -O0
-CFLAGS   += -O3 -Os
-
-AS     := $(GCCPATH)arm-none-eabi-gcc
-
-LD       := $(GCCPATH)arm-none-eabi-gcc
-LDFLAGS  += -O3 -Os
-LDLIBS   += -lm -lgcc -lc
-
-# import rules to compile glyphs(/pone)
-include $(BOLOS_SDK)/Makefile.glyphs
-
-### computed variables
-APP_SOURCE_PATH  += src
-SDK_SOURCE_PATH  += lib_stusb
-SDK_SOURCE_PATH  += lib_stusb_impl
-SDK_SOURCE_PATH  += lib_u2f
-
-load: all
-	python -m ledgerblue.loadApp $(APP_LOAD_PARAMS)
-
-delete:
-	python -m ledgerblue.deleteApp $(COMMON_DELETE_PARAMS)
-
-# import generic rules from the sdk
-include $(BOLOS_SDK)/Makefile.rules
-
-#add dependency on custom makefile filename
-dep/%.d: %.c Makefile.genericwallet
-
-listvariants:
-	@echo VARIANTS COIN nimiq
+# Makes a detailed report of code and data size in debug/size-report.txt
+# More useful for production builds with DEBUG=0
+size-report: bin/app.elf
+	arm-none-eabi-nm --print-size --size-sort --radix=d bin/app.elf >debug/size-report.txt
