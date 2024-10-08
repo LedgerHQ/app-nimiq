@@ -21,13 +21,16 @@
 #include <stdbool.h>
 
 #include "constants.h"
+#include "error_macros.h"
 
 void ui_menu_main();
 
 void ui_public_key();
 
-void ui_transaction_signing();
+WARN_UNUSED_RESULT
+error_t ui_transaction_signing();
 
-void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay);
+WARN_UNUSED_RESULT
+error_t ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay);
 
 #endif // _NIMIQ_UX_H_

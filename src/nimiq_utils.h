@@ -22,17 +22,8 @@
 #include <stdbool.h>
 
 #include "constants.h"
+#include "error_macros.h"
 #include "nimiq_staking_utils.h"
-
-#ifdef TEST
-#include <stdio.h>
-#define THROW(code) { printf("error: %d", code); return; }
-#define PRINTF(msg, arg) printf(msg, arg)
-#define PIC(code) code
-#define TARGET_NANOS 1
-#else
-#include "os.h"
-#endif // TEST
 
 #define LENGTH_NORMAL_TX_DATA_MAX 64
 // Ascii (1 char per byte + string terminator) or hex (2 char per byte + string terminator).
@@ -107,46 +98,69 @@ typedef struct {
     char network[12]; // "Main", "Test", "Development" or "Bounty" + string terminator
 } parsed_tx_t;
 
-void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, parsed_tx_t *out);
+WARN_UNUSED_RESULT
+error_t parse_tx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, parsed_tx_t *out);
 
-void public_key_to_address(uint8_t *in, uint8_t *out);
+WARN_UNUSED_RESULT
+error_t print_address(uint8_t *in, char *out);
 
-void print_address(uint8_t *in, char *out);
+WARN_UNUSED_RESULT
+error_t public_key_to_address(uint8_t *in, uint8_t *out);
 
-void print_public_key_as_address(uint8_t *in, char *out);
+WARN_UNUSED_RESULT
+error_t print_public_key_as_address(uint8_t *in, char *out);
 
-void print_hex(uint8_t *data, uint16_t dataLength, char *out, uint16_t outLength);
+WARN_UNUSED_RESULT
+error_t print_hex(uint8_t *data, uint16_t data_length, char *out, uint16_t out_length);
 
-void parse_amount(uint64_t amount, char *asset, char *out);
+WARN_UNUSED_RESULT
+error_t parse_amount(uint64_t amount, char *asset, char *out);
 
-void parse_network_id(transaction_version_t version, uint8_t network_id, char *out);
+WARN_UNUSED_RESULT
+error_t parse_network_id(transaction_version_t version, uint8_t network_id, char *out);
 
-bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or_staking_outgoing_t *out);
+WARN_UNUSED_RESULT
+error_t parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or_staking_outgoing_t *out,
+    bool *out_is_cashlink);
 
-void parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+WARN_UNUSED_RESULT
+error_t parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
     account_type_t sender_type, uint32_t validity_start_height, tx_data_htlc_creation_t *out);
 
-void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+WARN_UNUSED_RESULT
+error_t parse_vesting_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
     account_type_t sender_type, uint64_t tx_amount, tx_data_vesting_creation_t *out);
 
-uint8_t *readSubBuffer(uint16_t subBufferLength, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_sub_buffer(uint16_t sub_buffer_length, uint8_t **in_out_buffer, uint16_t *in_out_buffer_length,
+    uint8_t **out_sub_buffer);
 
-uint8_t readUInt8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_u8(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint8_t *out_value);
 
-uint16_t readUInt16(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_u16(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint16_t *out_value);
 
-uint32_t readUInt32(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_u32(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint32_t *out_value);
 
-uint64_t readUInt64(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_u64(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint64_t *out_value);
 
-uint32_t readUVarInt(uint8_t maxBits, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_bool(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, bool *out_value);
 
-bool readBool(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_serde_uvarint(uint8_t max_bits, uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint32_t *out_value);
 
-uint16_t readVecU8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint8_t **out_vecData);
+WARN_UNUSED_RESULT
+bool read_serde_vec_u8(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint8_t **out_data,
+    uint16_t *out_data_length);
 
-uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint32_t *out_bip32Path);
+WARN_UNUSED_RESULT
+bool read_bip32_path(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint32_t *out_bip32_path,
+    uint8_t *out_bip32_path_length);
 
-bool isPrintableAscii(uint8_t *data, uint16_t dataLength);
+bool is_printable_ascii(uint8_t *data, uint16_t data_length);
 
 #endif // _NIMIQ_UTILS_H_

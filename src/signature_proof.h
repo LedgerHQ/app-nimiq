@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "error_macros.h"
+
 typedef struct {
     // Currently only ed25519 without flags and only empty merkle paths are supported, therefore:
     // - the public key is an ed25519 public key and the signature an ed25519 signature
@@ -34,7 +36,9 @@ typedef struct {
     uint8_t merkle_path_length;
 } signature_proof_t;
 
-signature_proof_t read_signature_proof(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_signature_proof(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length,
+    signature_proof_t *out_signature_proof);
 
 bool is_empty_default_signature_proof(signature_proof_t signature_proof);
 

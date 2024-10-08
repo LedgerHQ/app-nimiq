@@ -22,22 +22,28 @@
  * Read a signature proof from a buffer. Note that all pointers in the returned signature proof are to the original
  * buffer. No copy of the data is created.
  */
-signature_proof_t read_signature_proof(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length) {
+WARN_UNUSED_RESULT
+bool read_signature_proof(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length,
+    signature_proof_t *out_signature_proof) {
     // See Serde::Serialize for SignatureProof in primitives/transaction/src/signature_proof.rs in core-rs-albatross.
-    signature_proof_t signature_proof;
-    signature_proof.type_and_flags = readUInt8(in_out_buffer, in_out_buffer_length);
-    if (signature_proof.type_and_flags != 0) {
-        PRINTF("Only ed25519 signature proofs without flags supported");
-        THROW(0x6a80);
-    }
-    signature_proof.public_key = readSubBuffer(32, in_out_buffer, in_out_buffer_length);
-    signature_proof.merkle_path_length = readUInt8(in_out_buffer, in_out_buffer_length);
-    if (signature_proof.merkle_path_length) {
-        PRINTF("Only signature proofs with empty merkle path supported");
-        THROW(0x6a80);
-    }
-    signature_proof.signature = readSubBuffer(64, in_out_buffer, in_out_buffer_length);
-    return signature_proof;
+    RETURN_ON_ERROR(
+        !read_u8(in_out_buffer, in_out_buffer_length, &out_signature_proof->type_and_flags)
+        || !read_sub_buffer(32, in_out_buffer, in_out_buffer_length, &out_signature_proof->public_key)
+        || !read_u8(in_out_buffer, in_out_buffer_length, &out_signature_proof->merkle_path_length)
+        || !read_sub_buffer(64, in_out_buffer, in_out_buffer_length, &out_signature_proof->signature),
+        false
+    );
+    RETURN_ON_ERROR(
+        out_signature_proof->type_and_flags != 0,
+        false,
+        "Only ed25519 signature proofs without flags supported\n"
+    );
+    RETURN_ON_ERROR(
+        out_signature_proof->merkle_path_length != 0,
+        false,
+        "Only signature proofs with empty merkle path supported\n"
+    );
+    return true;
 }
 
 bool is_empty_default_signature_proof(signature_proof_t signature_proof) {

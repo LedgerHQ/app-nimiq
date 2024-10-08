@@ -28,12 +28,10 @@
 
 // These are declared in main.c
 void app_exit();
-unsigned int io_seproxyhal_on_address_approved();
-unsigned int io_seproxyhal_on_address_rejected();
-unsigned int io_seproxyhal_on_transaction_approved();
-unsigned int io_seproxyhal_on_transaction_rejected();
-unsigned int io_seproxyhal_on_message_approved();
-unsigned int io_seproxyhal_on_message_rejected();
+void on_rejected();
+void on_address_approved();
+void on_transaction_approved();
+void on_message_approved();
 
 // Main menu and about menu
 
@@ -71,10 +69,10 @@ void ui_menu_main() {
 
 static void on_address_reviewed(bool approved) {
     if (approved) {
-        io_seproxyhal_on_address_approved(),
+        on_address_approved(),
         nbgl_useCaseReviewStatus(STATUS_TYPE_ADDRESS_VERIFIED, ui_menu_main);
     } else {
-        io_seproxyhal_on_address_rejected(),
+        on_rejected(),
         nbgl_useCaseReviewStatus(STATUS_TYPE_ADDRESS_REJECTED, ui_menu_main);
     }
 }
@@ -117,20 +115,24 @@ static void review_entries_initialize() {
     memset(&review_entries, 0, sizeof(review_entries));
 }
 
-static void review_entries_add(const char *item, const char *value) {
-    if (review_entries.count >= REVIEW_ENTRIES_MAX_COUNT) {
-        PRINTF("Too many nbgl transaction ui entries");
-        THROW(0x6700);
-    }
+WARN_UNUSED_RESULT
+static error_t review_entries_add(const char *item, const char *value) {
+    RETURN_ON_ERROR(
+        review_entries.count >= REVIEW_ENTRIES_MAX_COUNT,
+        ERROR_UNEXPECTED,
+        "Too many nbgl ui entries\n"
+    );
     review_entries.entries[review_entries.count].item = item;
     review_entries.entries[review_entries.count].value = value;
     review_entries.count++;
+    return ERROR_NONE;
 }
 #undef REVIEW_ENTRIES_MAX_COUNT
 
-static void review_entries_add_optional(const char *item, const char *value, bool condition) {
-    if (!condition) return;
-    review_entries_add(item, value);
+WARN_UNUSED_RESULT
+static error_t review_entries_add_optional(const char *item, const char *value, bool condition) {
+    if (!condition) return ERROR_NONE;
+    return review_entries_add(item, value);
 }
 
 static void review_entries_launch_use_case_review(
@@ -145,7 +147,10 @@ static void review_entries_launch_use_case_review(
     // The tagValueList gets copied in nbgl_useCaseReview, therefore it's sufficient to initialize it only in temporary
     // memory. We use G_io_apdu buffer as temporary buffer, to save some stack space, and check that it can fit the data
     // with a compile time assertion. Note that the entries are not copied, and we therefore have them in global memory.
-    _Static_assert(sizeof(nbgl_contentTagValueList_t) <= IO_APDU_BUFFER_SIZE, "G_io_apdu_buffer can't fit review list");
+    _Static_assert(
+        sizeof(nbgl_contentTagValueList_t) <= sizeof(G_io_apdu_buffer),
+        "G_io_apdu_buffer can't fit review list\n"
+    );
     nbgl_contentTagValueList_t *temporary_tag_value_list_pointer = (nbgl_contentTagValueList_t*) G_io_apdu_buffer;
     // Initialize list with zeroes, including .nbMaxLinesForValue (no limit of lines to display).
     memset(temporary_tag_value_list_pointer, 0, sizeof(nbgl_contentTagValueList_t));
@@ -176,85 +181,96 @@ static void review_entries_launch_use_case_review(
 
 // Transaction signing UI
 
-static void ui_transaction_prepare_review_entries_normal_or_staking_outgoing() {
+WARN_UNUSED_RESULT
+static error_t ui_transaction_prepare_review_entries_normal_or_staking_outgoing() {
     review_entries_initialize();
-    review_entries_add_optional(
-        "Amount",
-        PARSED_TX.value,
-        ux_transaction_generic_has_amount_entry()
+    RETURN_ON_ERROR(
+        review_entries_add_optional(
+            "Amount",
+            PARSED_TX.value,
+            ux_transaction_generic_has_amount_entry()
+        )
+        || review_entries_add(
+            "Recipient",
+            PARSED_TX_NORMAL_OR_STAKING_OUTGOING.recipient
+        )
+        || review_entries_add_optional(
+            PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data_label,
+            PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data,
+            ux_transaction_normal_or_staking_outgoing_has_data_entry()
+        )
+        || review_entries_add_optional(
+            "Fee",
+            PARSED_TX.fee,
+            ux_transaction_generic_has_fee_entry()
+        )
+        || review_entries_add(
+            "Network",
+            PARSED_TX.network
+        ),
+        ERROR_UNEXPECTED,
     );
-    review_entries_add(
-        "Recipient",
-        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.recipient
-    );
-    review_entries_add_optional(
-        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data_label,
-        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data,
-        ux_transaction_normal_or_staking_outgoing_has_data_entry()
-    );
-    review_entries_add_optional(
-        "Fee",
-        PARSED_TX.fee,
-        ux_transaction_generic_has_fee_entry()
-    );
-    review_entries_add(
-        "Network",
-        PARSED_TX.network
-    );
+    return ERROR_NONE;
 }
 
-static void ui_transaction_prepare_review_entries_staking_incoming() {
+WARN_UNUSED_RESULT
+static error_t ui_transaction_prepare_review_entries_staking_incoming() {
     review_entries_initialize();
-    // Amount for non-signaling transactions
-    review_entries_add_optional(
-        "Amount",
-        PARSED_TX.value,
-        ux_transaction_generic_has_amount_entry()
+    RETURN_ON_ERROR(
+        // Amount for non-signaling transactions
+        review_entries_add_optional(
+            "Amount",
+            PARSED_TX.value,
+            ux_transaction_generic_has_amount_entry()
+        )
+        // Amount in incoming staking data for signaling transactions
+        || review_entries_add_optional(
+            "Amount",
+            PARSED_TX_STAKING_INCOMING.set_active_stake_or_retire_stake.amount,
+            ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry()
+        )
+        || review_entries_add_optional(
+            "Staker",
+            PARSED_TX_STAKING_INCOMING.validator_or_staker_address,
+            ux_transaction_staking_incoming_has_staker_address_entry()
+        )
+        || review_entries_add_optional(
+            "Delegation",
+            PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker.delegation,
+            ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry()
+        )
+        || review_entries_add_optional(
+            "Reactivate all Stake",
+            PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker
+                .update_staker_reactivate_all_stake,
+            ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry()
+        )
+        || review_entries_add_optional(
+            "Fee",
+            PARSED_TX.fee,
+            ux_transaction_generic_has_fee_entry()
+        )
+        || review_entries_add(
+            "Network",
+            PARSED_TX.network
+        ),
+        ERROR_UNEXPECTED
     );
-    // Amount in incoming staking data for signaling transactions
-    review_entries_add_optional(
-        "Amount",
-        PARSED_TX_STAKING_INCOMING.set_active_stake_or_retire_stake.amount,
-        ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry()
-    );
-    review_entries_add_optional(
-        "Staker",
-        PARSED_TX_STAKING_INCOMING.validator_or_staker_address,
-        ux_transaction_staking_incoming_has_staker_address_entry()
-    );
-    review_entries_add_optional(
-        "Delegation",
-        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker.delegation,
-        ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry()
-    );
-    review_entries_add_optional(
-        "Reactivate all Stake",
-        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker
-            .update_staker_reactivate_all_stake,
-        ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry()
-    );
-    review_entries_add_optional(
-        "Fee",
-        PARSED_TX.fee,
-        ux_transaction_generic_has_fee_entry()
-    );
-    review_entries_add(
-        "Network",
-        PARSED_TX.network
-    );
+    return ERROR_NONE;
 }
 
 static void on_transaction_reviewed(bool approved) {
     if (approved) {
-        io_seproxyhal_on_transaction_approved(),
+        on_transaction_approved(),
         nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_SIGNED, ui_menu_main);
     } else {
-        io_seproxyhal_on_transaction_rejected(),
+        on_rejected(),
         nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_REJECTED, ui_menu_main);
     }
 }
 
-void ui_transaction_signing() {
+WARN_UNUSED_RESULT
+error_t ui_transaction_signing() {
     // Pointers to pre-existing const strings in read-only data segment / flash memory. Not meant to be written to.
     // While the strings are a bit repetitive, and thus somewhat wasteful in flash memory, we still prefer this approach
     // over assembling the string in RAM memory, because that is the much more limited resource. Manual newlines are set
@@ -310,23 +326,29 @@ void ui_transaction_signing() {
             finish_title = "Sign withdrawal\nof previously staked NIM";
             break;
         default:
-            PRINTF("Invalid transaction label type");
-            THROW(0x6a80);
+            // This should not happen, as the transaction parser should have set a valid transaction label type.
+            PRINTF("Invalid transaction label type\n");
+            return ERROR_UNEXPECTED;
     }
 
     switch (PARSED_TX.transaction_type) {
         case TRANSACTION_TYPE_NORMAL:
         case TRANSACTION_TYPE_STAKING_OUTGOING:
-            ui_transaction_prepare_review_entries_normal_or_staking_outgoing();
+            RETURN_ON_ERROR(
+                ui_transaction_prepare_review_entries_normal_or_staking_outgoing()
+            );
             break;
         case TRANSACTION_TYPE_STAKING_INCOMING:
-            ui_transaction_prepare_review_entries_staking_incoming();
+            RETURN_ON_ERROR(
+                ui_transaction_prepare_review_entries_staking_incoming()
+            );
             break;
         case TRANSACTION_TYPE_VESTING_CREATION:
         case TRANSACTION_TYPE_HTLC_CREATION:
         default:
-            PRINTF("Invalid transaction type");
-            THROW(0x6a80);
+            // This should not happen, as the transaction parser should have set a valid transaction type.
+            PRINTF("Invalid transaction type\n");
+            return ERROR_UNEXPECTED;
     }
 
     review_entries_launch_use_case_review(
@@ -338,17 +360,21 @@ void ui_transaction_signing() {
         /* choice_callback */ on_transaction_reviewed,
         /* use_small_font */ false
     );
+    return ERROR_NONE;
 }
 
 //////////////////////////////////////////////////////////////////////
 
 // Message signing UI
 
-static void ui_message_prepare_review_entries(message_display_type_t messageDisplayType) {
+WARN_UNUSED_RESULT
+static error_t ui_message_prepare_review_entries(message_display_type_t messageDisplayType) {
     review_entries_initialize();
     ctx.req.msg.confirm.displayType = messageDisplayType; // used in ux_message_signing_prepare_printed_message
-    ux_message_signing_prepare_printed_message();
-    review_entries_add(
+    RETURN_ON_ERROR(
+        ux_message_signing_prepare_printed_message()
+    );
+    return review_entries_add(
         ctx.req.msg.confirm.printedMessageLabel,
         ctx.req.msg.confirm.printedMessage
     );
@@ -357,15 +383,16 @@ static void ui_message_prepare_review_entries(message_display_type_t messageDisp
 // Called when long press button on 3rd page is long-touched or when reject footer is touched.
 static void on_message_reviewed(bool approved) {
     if (approved) {
-        io_seproxyhal_on_message_approved(),
+        on_message_approved(),
         nbgl_useCaseReviewStatus(STATUS_TYPE_MESSAGE_SIGNED, ui_menu_main);
     } else {
-        io_seproxyhal_on_message_rejected(),
+        on_rejected(),
         nbgl_useCaseReviewStatus(STATUS_TYPE_MESSAGE_REJECTED, ui_menu_main);
     }
 }
 
-void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
+WARN_UNUSED_RESULT
+error_t ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
     UNUSED(startAtMessageDisplay);
 
     // Pointer to pre-existing const strings in read-only data segment / flash memory. Not meant to be written to.
@@ -381,10 +408,12 @@ void ui_message_signing(message_display_type_t messageDisplayType, bool startAtM
             review_subtitle = "The message is displayed as SHA-256 hash.";
             break;
         default:
-            PRINTF("Invalid message display type");
-            THROW(0x6a80);
+            PRINTF("Invalid message display type\n");
+            return ERROR_UNEXPECTED;
     }
-    ui_message_prepare_review_entries(messageDisplayType);
+    RETURN_ON_ERROR(
+        ui_message_prepare_review_entries(messageDisplayType)
+    );
 
     review_entries_launch_use_case_review(
         /* operation_type */ TYPE_MESSAGE,
@@ -395,6 +424,7 @@ void ui_message_signing(message_display_type_t messageDisplayType, bool startAtM
         /* choice_callback */ on_message_reviewed,
         /* use_small_font */ true
     );
+    return ERROR_NONE;
 }
 
 #endif // HAVE_NBGL

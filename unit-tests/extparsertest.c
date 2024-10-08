@@ -39,39 +39,39 @@ int main(int argc, char *argv[]) {
     int read = read_file(filename, buffer, 4096);
     if (read) {
         // printHexBlocks(buffer, read/2);
-        parseTx(buffer, &parsed_tx);
+        parse_tx(buffer, &parsed_tx);
 
         if (strcmp(parsed_tx.details1, expected_expected_data) != 0) {
             printf(
-                "parseTx failed on extra data. Expected: %s; Actual: %s\n",
+                "parse_tx failed on extra data. Expected: %s; Actual: %s\n",
                 expected_expected_data,
                 parsed_tx.details1
             );
         }
         if (strcmp(parsed_tx.recipient, expected_recipient) != 0) {
             printf(
-                "parseTx failed on recipient. Expected: %s; Actual: %s\n",
+                "parse_tx failed on recipient. Expected: %s; Actual: %s\n",
                 expected_recipient,
                 parsed_tx.recipient
             );
         }
         if (strcmp(parsed_tx.value, expected_amount) != 0) {
             printf(
-                "parseTx failed on amount. Expected: %s; Actual: %s\n",
+                "parse_tx failed on amount. Expected: %s; Actual: %s\n",
                 expected_amount,
                 parsed_tx.value
             );
         }
         if (strcmp(parsed_tx.fee, expected_fee) != 0) {
             printf(
-                "parseTx failed on fee. Expected: %s; Actual: %s\n",
+                "parse_tx failed on fee. Expected: %s; Actual: %s\n",
                 expected_fee,
                 parsed_tx.fee
             );
         }
         if (strcmp(parsed_tx.validity_start, expected_validity_start) != 0) {
             printf(
-                "parseTx failed on validity start. Expected: %s; Actual: %s\n",
+                "parse_tx failed on validity start. Expected: %s; Actual: %s\n",
                 expected_validity_start,
                 parsed_tx.validity_start
             );

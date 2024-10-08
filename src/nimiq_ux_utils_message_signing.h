@@ -18,6 +18,10 @@
 #ifndef _NIMIQ_UX_UTILS_MESSAGE_SIGNING_H_
 #define _NIMIQ_UX_UTILS_MESSAGE_SIGNING_H_
 
-void ux_message_signing_prepare_printed_message();
+#include "constants.h"
+#include "error_macros.h"
+
+WARN_UNUSED_RESULT
+error_t ux_message_signing_prepare_printed_message();
 
 #endif //_NIMIQ_UX_UTILS_MESSAGE_SIGNING_H_

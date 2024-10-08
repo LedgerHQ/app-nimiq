@@ -28,12 +28,10 @@
 
 // These are declared in main.c
 void app_exit();
-unsigned int io_seproxyhal_on_address_approved();
-unsigned int io_seproxyhal_on_address_rejected();
-unsigned int io_seproxyhal_on_transaction_approved();
-unsigned int io_seproxyhal_on_transaction_rejected();
-unsigned int io_seproxyhal_on_message_approved();
-unsigned int io_seproxyhal_on_message_rejected();
+void on_rejected();
+void on_address_approved();
+void on_transaction_approved();
+void on_message_approved();
 
 // Main menu UI steps and flow
 
@@ -82,7 +80,7 @@ UX_STEP_CB(
     ux_public_key_flow_approve_step,
     pb,
     {
-        io_seproxyhal_on_address_approved();
+        on_address_approved();
         ui_menu_main();
     },
     {
@@ -93,7 +91,7 @@ UX_STEP_CB(
     ux_public_key_flow_reject_step,
     pb,
     {
-        io_seproxyhal_on_address_rejected();
+        on_rejected();
         ui_menu_main();
     },
     {
@@ -146,7 +144,7 @@ UX_STEP_CB(
     ux_transaction_generic_flow_approve_step,
     pbb,
     {
-        io_seproxyhal_on_transaction_approved();
+        on_transaction_approved();
         ui_menu_main();
     },
     {
@@ -158,7 +156,7 @@ UX_STEP_CB(
     ux_transaction_generic_flow_reject_step,
     pb,
     {
-        io_seproxyhal_on_transaction_rejected();
+        on_rejected();
         ui_menu_main();
     },
     {
@@ -455,7 +453,14 @@ UX_STEP_NOCB_INIT(
 UX_STEP_NOCB_INIT(
     ux_message_flow_message_step,
     paging,
-    ux_message_signing_prepare_printed_message(),
+    {
+        ON_ERROR(
+            ux_message_signing_prepare_printed_message(),
+            { app_exit(); },
+            ERROR_UNEXPECTED,
+            "Unexpected error in ux_message_signing_prepare_printed_message\n"
+        );
+    },
     {
         ctx.req.msg.confirm.printedMessageLabel,
         ctx.req.msg.confirm.printedMessage,
@@ -464,7 +469,14 @@ UX_OPTIONAL_STEP_CB(
     ux_message_flow_display_ascii_step,
     pbb,
     ctx.req.msg.isPrintableAscii && ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_ASCII,
-    ui_message_signing(MESSAGE_DISPLAY_TYPE_ASCII, true),
+    {
+        ON_ERROR(
+            ui_message_signing(MESSAGE_DISPLAY_TYPE_ASCII, true),
+            { app_exit(); },
+            ERROR_UNEXPECTED,
+            "Unexpected error in ui_message_signing\n"
+        );
+    },
     {
         &C_icon_certificate,
         "Display",
@@ -475,7 +487,14 @@ UX_OPTIONAL_STEP_CB(
     pbb,
     ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
         && ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_HEX,
-    ui_message_signing(MESSAGE_DISPLAY_TYPE_HEX, true),
+    {
+        ON_ERROR(
+            ui_message_signing(MESSAGE_DISPLAY_TYPE_HEX, true),
+            { app_exit(); },
+            ERROR_UNEXPECTED,
+            "Unexpected error in ui_message_signing\n"
+        );
+    },
     {
         &C_icon_certificate,
         "Display",
@@ -485,7 +504,14 @@ UX_OPTIONAL_STEP_CB(
     ux_message_flow_display_hash_step,
     pbb,
     ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_HASH,
-    ui_message_signing(MESSAGE_DISPLAY_TYPE_HASH, true),
+    {
+        ON_ERROR(
+            ui_message_signing(MESSAGE_DISPLAY_TYPE_HASH, true),
+            { app_exit(); },
+            ERROR_UNEXPECTED,
+            "Unexpected error in ui_message_signing\n"
+        );
+    },
     {
         &C_icon_certificate,
         "Display",
@@ -495,7 +521,7 @@ UX_STEP_CB(
     ux_message_flow_approve_step,
     pbb,
     {
-        io_seproxyhal_on_message_approved();
+        on_message_approved();
         ui_menu_main();
     },
     {
@@ -507,7 +533,7 @@ UX_STEP_CB(
     ux_message_flow_reject_step,
     pb,
     {
-        io_seproxyhal_on_message_rejected();
+        on_rejected();
         ui_menu_main();
     },
     {
@@ -541,7 +567,8 @@ void ui_public_key() {
     ux_flow_init(0, ux_public_key_flow, NULL);
 }
 
-void ui_transaction_signing() {
+WARN_UNUSED_RESULT
+error_t ui_transaction_signing() {
     // The complete title will be "Confirm <PARSED_TX.transaction_label>"
     switch (PARSED_TX.transaction_label_type) {
         case TRANSACTION_LABEL_TYPE_REGULAR_TRANSACTION:
@@ -575,8 +602,9 @@ void ui_transaction_signing() {
             strcpy(PARSED_TX.transaction_label, "Unstake");
             break;
         default:
-            PRINTF("Invalid transaction label type");
-            THROW(0x6a80);
+            // This should not happen, as the transaction parser should have set a valid transaction label type.
+            PRINTF("Invalid transaction label type\n");
+            return ERROR_UNEXPECTED;
     }
 
     const ux_flow_step_t* const * transaction_flow;
@@ -595,16 +623,22 @@ void ui_transaction_signing() {
             transaction_flow = ux_transaction_staking_incoming_flow;
             break;
         default:
-            PRINTF("Invalid transaction type");
-            THROW(0x6a80);
+            // This should not happen, as the transaction parser should have set a valid transaction type.
+            PRINTF("Invalid transaction type\n");
+            return ERROR_UNEXPECTED;
     }
 
     ux_flow_init(0, transaction_flow, NULL);
+    return ERROR_NONE;
 }
 
-void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
+WARN_UNUSED_RESULT
+error_t ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
     ctx.req.msg.confirm.displayType = messageDisplayType;
     ux_flow_init(0, ux_message_flow, startAtMessageDisplay ? &ux_message_flow_message_step : NULL);
+    // Note that for BAGL, this method never returns an error, but for NBGL it can theoretically, which is why it has
+    // return type error_t.
+    return ERROR_NONE;
 }
 
 // resolve io_seproxyhal_display as io_seproxyhal_display_default

@@ -32,7 +32,8 @@
 
 static const uint8_t AMOUNT_MAX_SIZE = 17;
 
-void iban_check(char in[32], char *check) {
+WARN_UNUSED_RESULT
+error_t iban_check(char in[32], char *check) {
     unsigned int counter = 0;
     unsigned int offset = 0;
     unsigned int modulo = 0;
@@ -52,10 +53,13 @@ void iban_check(char in[32], char *check) {
 
     // Convert the address to a number-only string
     for (unsigned int i = 0; i < 36; i++) {
-        if (counter >= 70) {
-            PRINTF("Overflow in iban check");
-            THROW(0x6700);
-        }
+        RETURN_ON_ERROR(
+            // This error should not occur, given the number of iterations and the fact that at least two address chars
+            // are digits, which increase the counter only by one.
+            counter >= 70,
+            ERROR_UNEXPECTED,
+            "Overflow in iban check\n"
+        );
         if (address[i] >= 48 && address[i] <= 57) {
             total_number[counter++] = address[i];
         } else if (address[i] >= 65 && address[i] <= 90) {
@@ -67,8 +71,8 @@ void iban_check(char in[32], char *check) {
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
         } else {
-            PRINTF("Invalid ascii code in iban check");
-            THROW(0x6a80);
+            PRINTF("Invalid ascii code in iban check\n");
+            return ERROR_INCORRECT_DATA;
         }
     }
 
@@ -92,14 +96,21 @@ void iban_check(char in[32], char *check) {
     }
 
     snprintf(check, 3, "%02d", 98 - modulo);
+
+    return ERROR_NONE;
 }
 
-void print_address(uint8_t *in, char *out) {
+WARN_UNUSED_RESULT
+error_t print_address(uint8_t *in, char *out) {
     unsigned int counter = 4;
-    char after_base32[32] = { 0 };
+    char after_base32[33] = { 0 }; // includes one extra byte for the string terminator
 
-    base32_encode(in, 20, after_base32, 32);
-    iban_check(after_base32, &out[2]);
+    RETURN_ON_ERROR(
+        base32_encode(in, 20, after_base32, sizeof(after_base32))
+    );
+    RETURN_ON_ERROR(
+        iban_check(after_base32, &out[2])
+    );
 
     out[0] = 'N';
     out[1] = 'Q';
@@ -113,46 +124,64 @@ void print_address(uint8_t *in, char *out) {
 
     // Make sure that the address string is always null-terminated
     out[44] = '\0';
+
+    return ERROR_NONE;
 }
 
-void public_key_to_address(uint8_t *in, uint8_t *out) {
+WARN_UNUSED_RESULT
+error_t public_key_to_address(uint8_t *in, uint8_t *out) {
     // See lcx_blake2.h and lcx_hash.h in Ledger sdk
     unsigned char blake2b_hash[32];
     cx_blake2b_t blake2b_context;
-    cx_blake2b_init(&blake2b_context, /* hash length in bits */ 256);
-    cx_hash(&blake2b_context.header, CX_LAST, in, 32, blake2b_hash, 32);
+    RETURN_ON_ERROR(
+        cx_blake2b_init_no_throw(&blake2b_context, /* hash length in bits */ 256)
+        || cx_hash_no_throw(&blake2b_context.header, CX_LAST, in, 32, blake2b_hash, 32),
+        ERROR_CRYPTOGRAPHY
+    );
     os_memmove(out, blake2b_hash, 20); // the first 20 bytes of the hash are the Nimiq address
+    return ERROR_NONE;
 }
 
-void print_public_key_as_address(uint8_t *in, char *out) {
+WARN_UNUSED_RESULT
+error_t print_public_key_as_address(uint8_t *in, char *out) {
     uint8_t address[20];
-    public_key_to_address(in, address);
-    print_address(address, out);
+    RETURN_ON_ERROR(
+        public_key_to_address(in, address)
+    );
+    RETURN_ON_ERROR(
+        print_address(address, out)
+    );
+    return ERROR_NONE;
 }
 
-void print_hex(uint8_t *data, uint16_t dataLength, char *out, uint16_t outLength) {
-    if (outLength < dataLength * 2 + 1) {
-        // does not fit 2 hex chars per byte + string terminator
-        PRINTF("print_hex: out buffer too small to fit hex");
-        THROW(0x6700);
-    }
+WARN_UNUSED_RESULT
+error_t print_hex(uint8_t *data, uint16_t data_length, char *out, uint16_t out_length) {
+    RETURN_ON_ERROR(
+        // Check that it fits 2 hex chars per byte + string terminator.
+        out_length < data_length * 2 + 1,
+        ERROR_INVALID_LENGTH,
+        "Out buffer too small to fit hex\n"
+    );
     // not using Ledger's proprietary %.*H snprintf format, as it's non-standard
     // (see https://github.com/LedgerHQ/app-bitcoin/pull/200/files)
-    for (uint16_t i = 0; i < dataLength; i++) {
+    for (uint16_t i = 0; i < data_length; i++) {
         snprintf(out + i * 2, /* 2 hex chars + string terminator */ 3, "%02X", data[i]);
     }
+    return ERROR_NONE;
 }
 
-void parse_amount(uint64_t amount, char *asset, char *out) {
-    char buffer[AMOUNT_MAX_SIZE];
+WARN_UNUSED_RESULT
+error_t parse_amount(uint64_t amount, char *asset, char *out) {
+    char buffer[AMOUNT_MAX_SIZE]; // Notably this is not a \0 terminated string because the added dot occupies one spot.
     uint64_t dVal = amount;
     int i, j;
 
     // If the amount can't be represented safely in JavaScript, signal an error
-    if (amount > MAX_SAFE_INTEGER) {
-        PRINTF("Invalid amount");
-        THROW(0x6a80);
-    }
+    RETURN_ON_ERROR(
+        amount > MAX_SAFE_INTEGER,
+        ERROR_INCORRECT_DATA,
+        "Invalid amount\n"
+    );
 
     memset(buffer, 0, AMOUNT_MAX_SIZE);
     for (i = 0; dVal > 0 || i < 7; i++) {
@@ -166,10 +195,12 @@ void parse_amount(uint64_t amount, char *asset, char *out) {
             i += 1;
             buffer[i] = '.';
         }
-        if (i >= AMOUNT_MAX_SIZE) {
-            PRINTF("Overflow in parse_amount");
-            THROW(0x6700);
-        }
+        RETURN_ON_ERROR(
+            // If AMOUNT_MAX_SIZE is defined correctly and the loop works correctly, this shouldn't happen.
+            i >= AMOUNT_MAX_SIZE,
+            ERROR_UNEXPECTED,
+            "Overflow in parse_amount\n"
+        );
     }
     // reverse order
     for (i -= 1, j = 0; i >= 0 && j < AMOUNT_MAX_SIZE-1; i--, j++) {
@@ -185,6 +216,11 @@ void parse_amount(uint64_t amount, char *asset, char *out) {
     if (out[j-1] == '.') j -= 1;
 
     if (asset) {
+        RETURN_ON_ERROR(
+            j + /* added space */ 1 + strlen(asset) + /* string terminator */ 1 > STRING_LENGTH_NIM_AMOUNT,
+            ERROR_INCORRECT_DATA,
+            "Result is longer than STRING_LENGTH_NIM_AMOUNT\n"
+        );
         // qualify amount
         out[j++] = ' ';
         strcpy(out + j, asset);
@@ -193,9 +229,11 @@ void parse_amount(uint64_t amount, char *asset, char *out) {
         out[j] = '\0';
     }
 
+    return ERROR_NONE;
 }
 
-void parse_network_id(transaction_version_t version, uint8_t network_id, char *out) {
+WARN_UNUSED_RESULT
+error_t parse_network_id(transaction_version_t version, uint8_t network_id, char *out) {
     if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 42 : 24)) {
         strcpy(out, "Main");
     } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 1 : 5)) {
@@ -205,36 +243,44 @@ void parse_network_id(transaction_version_t version, uint8_t network_id, char *o
     } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 3 : 7)) {
         strcpy(out, "Bounty");
     } else {
-        PRINTF("Invalid network");
-        THROW(0x6a80);
+        PRINTF("Invalid network\n");
+        return ERROR_INCORRECT_DATA;
     }
+    return ERROR_NONE;
 }
 
-bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or_staking_outgoing_t *out) {
-    // Make sure we don't get called with more data than we can fit on the extra data field.
-    if (data_length > LENGTH_NORMAL_TX_DATA_MAX) {
-        PRINTF("Extra data too long");
-        THROW(0x6700);
-    }
-
+WARN_UNUSED_RESULT
+error_t parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or_staking_outgoing_t *out,
+    bool *out_is_cashlink) {
     // initiate with empty string / empty data
     strcpy(out->extra_data_label, "");
     strcpy(out->extra_data, "");
+    *out_is_cashlink = false;
+
+    // Make sure we don't get called with more data than we can fit on the extra data field.
+    RETURN_ON_ERROR(
+        data_length > LENGTH_NORMAL_TX_DATA_MAX,
+        ERROR_INVALID_LENGTH,
+        "Extra data too long\n"
+    );
 
     if (data == NULL || data_length == 0) {
-        return false;
+        return ERROR_NONE;
     }
 
     // Check if it's the special Cashlink data which we do not want to display.
     if (data_length == CASHLINK_MAGIC_NUMBER_LENGTH
         && memcmp(data, CASHLINK_MAGIC_NUMBER, CASHLINK_MAGIC_NUMBER_LENGTH) == 0) {
-        return true;
+        *out_is_cashlink = true;
+        return ERROR_NONE;
     }
     // Check if there is any non-printable ASCII characters
-    if (!isPrintableAscii(data, data_length)) {
+    if (!is_printable_ascii(data, data_length)) {
         strcpy(out->extra_data_label, "Data Hex");
-        print_hex(data, data_length, out->extra_data, sizeof(out->extra_data));
-        return false;
+        RETURN_ON_ERROR(
+            print_hex(data, data_length, out->extra_data, sizeof(out->extra_data))
+        );
+        return ERROR_NONE;
     }
 
     // If there is not, copy the string to be displayed
@@ -242,35 +288,58 @@ bool parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or
     strncpy(out->extra_data, (char *) data, data_length);
     out->extra_data[data_length] = '\0'; // Make sure the string is terminated
 
-    return false;
+    return ERROR_NONE;
 }
 
-void parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+WARN_UNUSED_RESULT
+error_t parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
     account_type_t sender_type, uint32_t validity_start_height, tx_data_htlc_creation_t *out) {
-    if (version != TRANSACTION_VERSION_LEGACY) {
-        PRINTF("HTLC creation not implemented yet for Albatross");
-        THROW(0x9484);
-    }
+    RETURN_ON_ERROR(
+        version != TRANSACTION_VERSION_LEGACY,
+        ERROR_NOT_SUPPORTED,
+        "HTLC creation not implemented yet for Albatross\n"
+    );
 
     // Process refund address
-    uint8_t *refund_address_bytes = readSubBuffer(20, &data, &data_length);
-    print_address(refund_address_bytes, out->refund_address);
+    uint8_t *refund_address_bytes;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(20, &data, &data_length, &refund_address_bytes),
+        ERROR_READ
+    );
+    RETURN_ON_ERROR(
+        print_address(refund_address_bytes, out->refund_address)
+    );
     out->is_refund_address_sender_address = memcmp(refund_address_bytes, sender, 20) == 0;
 
-    if (out->is_refund_address_sender_address && sender_type != ACCOUNT_TYPE_BASIC) {
+    RETURN_ON_ERROR(
         // Although the refund address can be any address, specifying a contract as refund address is not recommendable
         // because for the contract address there is no key that could create the required signature for the htlc refund
         // proof. Protect the user from this scenario, as far as we can detect it.
-        PRINTF("HTLC refund address should not be a contract");
-        THROW(0x6a80);
-    }
+        out->is_refund_address_sender_address && sender_type != ACCOUNT_TYPE_BASIC,
+        ERROR_INCORRECT_DATA,
+        "HTLC refund address should not be a contract\n"
+    );
 
     // Process redeem address
-    uint8_t *redeem_address_bytes = readSubBuffer(20, &data, &data_length);
-    print_address(redeem_address_bytes, out->redeem_address);
+    uint8_t *redeem_address_bytes;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(20, &data, &data_length, &redeem_address_bytes),
+        ERROR_READ
+    );
+    RETURN_ON_ERROR(
+        print_address(redeem_address_bytes, out->redeem_address)
+    );
 
     // Process hash algorithm
-    hash_algorithm_t hash_algorithm = readUInt8(&data, &data_length);
+    hash_algorithm_t hash_algorithm;
+    _Static_assert(
+        sizeof(hash_algorithm) == 1,
+        "hash_algorithm has more than one byte. Need to take endianness into account when reading into a u8 pointer.\n"
+    );
+    RETURN_ON_ERROR(
+        !read_u8(&data, &data_length, &hash_algorithm),
+        ERROR_READ
+    );
     switch (hash_algorithm) {
         case HASH_ALGORITHM_BLAKE2B:
             strcpy(out->hash_algorithm, "BLAKE2b");
@@ -283,59 +352,83 @@ void parse_htlc_creation_data(transaction_version_t version, uint8_t *data, uint
             break;
         default:
             // Invalid hash algorithm. Notably, ARGON2d is blacklisted for HTLCs.
-            PRINTF("Invalid hash algorithm or blacklisted ARGON2d");
-            THROW(0x6a80);
+            PRINTF("Invalid hash algorithm or blacklisted ARGON2d\n");
+            return ERROR_INCORRECT_DATA;
     }
     out->is_using_sha256 = hash_algorithm == HASH_ALGORITHM_SHA256;
 
     // Process hash root
     uint8_t hash_size = hash_algorithm == HASH_ALGORITHM_SHA512 ? 64 : 32;
-    uint8_t *hash_bytes = readSubBuffer(hash_size, &data, &data_length);
+    uint8_t *hash_bytes;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(hash_size, &data, &data_length, &hash_bytes),
+        ERROR_READ
+    );
     // Print the hash as hex. Note that %.*h is a non-standard format implemented by the ledger sdk for printing data
     // as hex (see os_printf.c).
     snprintf(out->hash_root, MIN(sizeof(out->hash_root), hash_size * 2 + 1), "%.*h", hash_size, hash_bytes);
 
     // Process hash count
-    uint8_t hash_count = readUInt8(&data, &data_length);
+    uint8_t hash_count;
+    RETURN_ON_ERROR(
+        !read_u8(&data, &data_length, &hash_count),
+        ERROR_READ
+    );
     snprintf(out->hash_count, sizeof(out->hash_count), "%u", hash_count);
 
     // Process timeout
-    uint32_t timeout = readUInt32(&data, &data_length);
+    uint32_t timeout;
+    RETURN_ON_ERROR(
+        !read_u32(&data, &data_length, &timeout),
+        ERROR_READ
+    );
     // note: not %lu (for unsigned long int) because int is already 32bit on ledgers (see "Memory Alignment" in Ledger
     // docu), additionally Ledger's own implementation of sprintf does not support %lu (see os_printf.c)
     snprintf(out->timeout, sizeof(out->timeout), "%u", timeout);
     out->is_timing_out_soon = timeout < validity_start_height
         || timeout - validity_start_height < HTLC_TIMEOUT_SOON_THRESHOLD;
 
-    if (data_length != 0) {
-        PRINTF("Htlc data too long");
-        THROW(0x6700);
-    }
+    RETURN_ON_ERROR(
+        data_length != 0,
+        ERROR_INVALID_LENGTH,
+        "Htlc data too long\n"
+    );
+
+    return ERROR_NONE;
 }
 
-void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+WARN_UNUSED_RESULT
+error_t parse_vesting_creation_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
     account_type_t sender_type, uint64_t tx_amount, tx_data_vesting_creation_t *out) {
-    if (version != TRANSACTION_VERSION_LEGACY) {
-        PRINTF("Vesting creation not implemented yet for Albatross");
-        THROW(0x9484);
-    }
+    RETURN_ON_ERROR(
+        version != TRANSACTION_VERSION_LEGACY,
+        ERROR_NOT_SUPPORTED,
+        "Vesting creation not implemented yet for Albatross\n"
+    );
 
     // Note that this method could be quite heavy on the stack (depending on how well the compiler optimizes it). It
     // could be refactored by allocating less variables by printing them directly or re-using variables, but at the cost
     // of less readable code.
 
     // Process owner address
-    uint8_t *owner_address_bytes = readSubBuffer(20, &data, &data_length);
-    print_address(owner_address_bytes, out->owner_address);
+    uint8_t *owner_address_bytes;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(20, &data, &data_length, &owner_address_bytes),
+        ERROR_READ
+    );
+    RETURN_ON_ERROR(
+        print_address(owner_address_bytes, out->owner_address)
+    );
     out->is_owner_address_sender_address = memcmp(owner_address_bytes, sender, 20) == 0;
 
-    if (out->is_owner_address_sender_address && sender_type != ACCOUNT_TYPE_BASIC) {
+    RETURN_ON_ERROR(
         // Although the owner address can be any address, specifying a contract as owner is not recommendable because
         // for the contract address there is no key that could create the required signature for the vesting proof.
         // Protect the user from this scenario, as far as we can detect it.
-        PRINTF("Vesting owner address should not be a contract");
-        THROW(0x6a80);
-    }
+        out->is_owner_address_sender_address && sender_type != ACCOUNT_TYPE_BASIC,
+        ERROR_INCORRECT_DATA,
+        "Vesting owner address should not be a contract\n"
+    );
 
     // Read vesting parameters from data, depending on what is specified, and assign default values otherwise
     uint32_t start_block = 0;
@@ -343,21 +436,31 @@ void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, u
     uint64_t step_amount = tx_amount;
     uint64_t total_locked_amount = tx_amount;
     if (data_length == 4) {
-        step_block_count = readUInt32(&data, &data_length);
+        RETURN_ON_ERROR(
+            !read_u32(&data, &data_length, &step_block_count),
+            ERROR_READ
+        );
     } else {
-        start_block = readUInt32(&data, &data_length);
-        step_block_count = readUInt32(&data, &data_length);
-        step_amount = readUInt64(&data, &data_length);
+        RETURN_ON_ERROR(
+            !read_u32(&data, &data_length, &start_block)
+            || !read_u32(&data, &data_length, &step_block_count)
+            || !read_u64(&data, &data_length, &step_amount),
+            ERROR_READ
+        );
 
         if (data_length == 8) {
-            total_locked_amount = readUInt64(&data, &data_length);
+            RETURN_ON_ERROR(
+                !read_u64(&data, &data_length, &total_locked_amount),
+                ERROR_READ
+            );
         }
     }
 
-    if (data_length != 0) {
-        PRINTF("Vesting data too long");
-        THROW(0x6700);
-    }
+    RETURN_ON_ERROR(
+        data_length != 0,
+        ERROR_INVALID_LENGTH,
+        "Vesting data too long\n"
+    );
 
     // Translate into more user friendly information for display
     uint32_t step_count;
@@ -387,15 +490,16 @@ void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, u
         // Actual vesting step count, potentially including steps that do not actually unlock real contract funds if
         // total_locked_amount > tx_amount
         helper_uint64 = (total_locked_amount / step_amount) + /* round up */ !!(total_locked_amount % step_amount);
-        if (helper_uint64 > UINT32_MAX) {
+        RETURN_ON_ERROR(
             // While this is theoretically possible in valid vesting contracts, for example for total_locked_amount ==
             // MAX_SAFE_INTEGER and step_amount == 1, this exceeds the currently supported number of blocks of the Nimiq
             // blockchain and would lock funds for thousands to billions of years and is therefore a nonsense config
             // that we want to protect users from.
             // TODO re-evaluate this for Nimiq 2.0
-            PRINTF("Vesting steps exceed number of possible Nimiq blocks");
-            THROW(0x9850);
-        }
+            helper_uint64 > UINT32_MAX,
+            ERROR_INCORRECT_DATA,
+            "Vesting steps exceed number of possible Nimiq blocks\n"
+        );
 
         // step_count
         if (total_locked_amount <= tx_amount) {
@@ -413,10 +517,11 @@ void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, u
 
         // period
         helper_uint64 = /* actual vesting step count */ helper_uint64 * step_block_count;
-        if (helper_uint64 + start_block > UINT32_MAX) {
-            PRINTF("Vesting end exceeds number of possible Nimiq blocks");
-            THROW(0x9850);
-        }
+        RETURN_ON_ERROR(
+            helper_uint64 + start_block > UINT32_MAX,
+            ERROR_INCORRECT_DATA,
+            "Vesting end exceeds number of possible Nimiq blocks\n"
+        );
         period = (uint32_t) helper_uint64;
 
         // remaining values for the standard total_locked_amount == tx_amount case
@@ -457,57 +562,107 @@ void parse_vesting_creation_data(transaction_version_t version, uint8_t *data, u
         first_step_block_count != 1 ? 's' : '\0');
     snprintf(out->first_step_block, sizeof(out->first_step_block), "%u",
         start_block + first_step_block_count); // guaranteed to not overflow as also start_block + period <= UINT32_MAX
-    parse_amount(step_amount, "NIM", out->step_amount);
-    parse_amount(first_step_amount, "NIM", out->first_step_amount);
-    parse_amount(last_step_amount, "NIM", out->last_step_amount);
-    parse_amount(pre_vested_amount, "NIM", out->pre_vested_amount);
+    RETURN_ON_ERROR(
+        parse_amount(step_amount, "NIM", out->step_amount)
+        || parse_amount(first_step_amount, "NIM", out->first_step_amount)
+        || parse_amount(last_step_amount, "NIM", out->last_step_amount)
+        || parse_amount(pre_vested_amount, "NIM", out->pre_vested_amount),
+        ERROR_INCORRECT_DATA
+    );
+
+    return ERROR_NONE;
 }
 
 // Buffer utils
 // Note that these favor sanity checks and code readability over execution speed or low stack / memory usage.
 
 /**
- * Returns the leading part of a buffer as pointer in the original buffer, and advances the buffer pointer by length of
+ * Reads the leading part of a buffer as pointer in the original buffer, and advances the buffer pointer by length of
  * the extracted sub buffer. Notably, no copy of the sub buffer is created.
- * @param subBufferLength - The length of the sub buffer to read.
+ * @param sub_buffer_length - The length of the sub buffer to read.
  * @param in_out_buffer - Buffer to read sub buffer from, after which the buffer pointer gets advanced by length read.
- * @param in_out_bufferLength - Buffer length to check sub buffer length against. Afterwards reduced by length read.
- * @return A pointer to the sub buffer. This is a pointer in the original buffer (not to a copy) or NULL.
+ * @param in_out_buffer_length - Buffer length to check sub buffer length against. Afterwards reduced by length read.
+ * @param out_sub_buffer - A pointer to the sub buffer. This is a pointer in the original buffer (not to a copy) or NULL
+ * @return true on success, false on error
  */
-uint8_t *readSubBuffer(uint16_t subBufferLength, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
-    if (subBufferLength == 0) return NULL;
-    if (in_out_buffer == NULL || *in_out_buffer == NULL || in_out_bufferLength == NULL) {
-        PRINTF("Buffer invalid");
-        THROW(0x6a80);
+WARN_UNUSED_RESULT
+bool read_sub_buffer(uint16_t sub_buffer_length, uint8_t **in_out_buffer, uint16_t *in_out_buffer_length,
+    uint8_t **out_sub_buffer) {
+    *out_sub_buffer = NULL;
+    if (sub_buffer_length == 0) {
+        return true;
     }
-    if (*in_out_bufferLength < subBufferLength) {
-        PRINTF("Buffer too short");
-        THROW(0x6700);
+    if (in_out_buffer == NULL || *in_out_buffer == NULL || in_out_buffer_length == NULL) {
+        PRINTF("Buffer invalid\n");
+        return false;
     }
-    uint8_t *subBuffer = *in_out_buffer;
+    if (*in_out_buffer_length < sub_buffer_length) {
+        PRINTF("Buffer too short\n");
+        return false;
+    }
+    *out_sub_buffer = *in_out_buffer;
     // Advance buffer and reduce the remaining buffer length.
-    *in_out_buffer += subBufferLength;
-    *in_out_bufferLength -= subBufferLength;
-    return subBuffer;
+    *in_out_buffer += sub_buffer_length;
+    *in_out_buffer_length -= sub_buffer_length;
+    return true;
 }
 
-uint8_t readUInt8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
-    return *(readSubBuffer(1, in_out_buffer, in_out_bufferLength));
+WARN_UNUSED_RESULT
+bool read_u8(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint8_t *out_value) {
+    uint8_t *uint8_pointer;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(1, in_out_buffer, in_out_buffer_length, &uint8_pointer),
+        false
+    );
+    *out_value = *uint8_pointer;
+    return true;
 }
 
-uint16_t readUInt16(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
-    return (((uint16_t) readUInt8(in_out_buffer, in_out_bufferLength)) << 8)
-        | readUInt8(in_out_buffer, in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_u16(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint16_t *out_value) {
+    uint8_t a, b;
+    RETURN_ON_ERROR(
+        !read_u8(in_out_buffer, in_out_buffer_length, &a)
+        || !read_u8(in_out_buffer, in_out_buffer_length, &b),
+        false
+    );
+    *out_value = (((uint16_t) a) << 8) | b;
+    return true;
 }
 
-uint32_t readUInt32(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
-    return (((uint32_t) readUInt16(in_out_buffer, in_out_bufferLength)) << 16)
-        | readUInt16(in_out_buffer, in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_u32(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint32_t *out_value) {
+    uint16_t a, b;
+    RETURN_ON_ERROR(
+        !read_u16(in_out_buffer, in_out_buffer_length, &a)
+        || !read_u16(in_out_buffer, in_out_buffer_length, &b),
+        false
+    );
+    *out_value = (((uint32_t) a) << 16) | b;
+    return true;
 }
 
-uint64_t readUInt64(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
-    return (((uint64_t) readUInt32(in_out_buffer, in_out_bufferLength)) << 32)
-        | readUInt32(in_out_buffer, in_out_bufferLength);
+WARN_UNUSED_RESULT
+bool read_u64(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint64_t *out_value) {
+    uint32_t a, b;
+    RETURN_ON_ERROR(
+        !read_u32(in_out_buffer, in_out_buffer_length, &a)
+        || !read_u32(in_out_buffer, in_out_buffer_length, &b),
+        false
+    );
+    *out_value = (((uint64_t) a) << 32) | b;
+    return true;
+}
+
+WARN_UNUSED_RESULT
+bool read_bool(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, bool *out_value) {
+    uint8_t uint8_value;
+    RETURN_ON_ERROR(
+        !read_u8(in_out_buffer, in_out_buffer_length, &uint8_value),
+        false
+    );
+    *out_value = uint8_value != 0;
+    return true;
 }
 
 /**
@@ -515,110 +670,182 @@ uint64_t readUInt64(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
  * also called LEB, see https://en.wikipedia.org/wiki/LEB128. Note that this serialization format is different from, for
  * example, Bitcoin's variable length integers.
  */
-uint32_t readUVarInt(uint8_t maxBits, uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
+WARN_UNUSED_RESULT
+bool read_serde_uvarint(uint8_t max_bits, uint8_t **in_out_buffer, uint16_t *in_out_buffer_length,
+    uint32_t *out_value) {
     // This is currently an incomplete implementation, as it only supports reading single-byte varints, i.e. values up
-    // to 127, as we currently don't need reading higher values. Parameter maxBits is also mostly ignored yet in this
+    // to 127, as we currently don't need reading higher values. Parameter max_bits is also mostly ignored yet in this
     // implementation, we only check that it is not less that what's read from a single byte.
-    if (maxBits < 7) {
-        PRINTF("Unsupported varint length");
-        THROW(0x9484);
-    }
-    uint8_t byte = readUInt8(in_out_buffer, in_out_bufferLength);
+    RETURN_ON_ERROR(
+        max_bits < 7,
+        false,
+        "Unsupported varint length\n"
+    );
+    uint8_t byte;
+    RETURN_ON_ERROR(
+        !read_u8(in_out_buffer, in_out_buffer_length, &byte),
+        false
+    );
     uint8_t continuationBit = byte & 0x80; // the most significant bit is the continuation bit
-    if (continuationBit) {
-        PRINTF("Unsupported multi-byte varint");
-        THROW(0x9484);
-    }
-    return byte;
-}
-
-bool readBool(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength) {
-    return readUInt8(in_out_buffer, in_out_bufferLength) != 0;
+    RETURN_ON_ERROR(
+        continuationBit,
+        false,
+        "Unsupported multi-byte varint\n"
+    );
+    *out_value = byte;
+    return true;
 }
 
 /**
  * Read a vector of bytes, compatible with serde / postcard serialization of a rust Vec<u8>. No copy of the data is
  * created.
  */
-uint16_t readVecU8(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint8_t **out_vecData) {
+WARN_UNUSED_RESULT
+bool read_serde_vec_u8(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint8_t **out_data,
+    uint16_t *out_data_length) {
     // A Vec is represented as a seq by serde, see https://serde.rs/data-model.html#types, which in turn is encoded as a
     // varint(usize) followed by the u8 data by postcard, see https://postcard.jamesmunns.com/wire-format.html#23---seq.
     // While usize is typically 32 bit or 64 bit, see https://postcard.jamesmunns.com/wire-format.html#isize-and-usize,
     // depending on the host size, we limit it to 16 bit here, as the memory of Ledger devices can't hold that long data
     // anyway. The u8 data is stored as individual bytes, see https://postcard.jamesmunns.com/wire-format.html#7---u8.
-    uint16_t length = (uint16_t) readUVarInt(16, in_out_buffer, in_out_bufferLength);
-    *out_vecData = readSubBuffer(length, in_out_buffer, in_out_bufferLength);
-    return length;
+    uint32_t data_length; // u32 as that's what read_serde_uvarint expects
+    RETURN_ON_ERROR(
+        !read_serde_uvarint(16, in_out_buffer, in_out_buffer_length, &data_length)
+        || !read_sub_buffer(data_length, in_out_buffer, in_out_buffer_length, out_data),
+        false
+    );
+    *out_data_length = data_length; // no risk of overflow, as we limited the reading of the uvarint to 16 bits
+    return true;
 }
 
-uint8_t readBip32Path(uint8_t **in_out_buffer, uint16_t *in_out_bufferLength, uint32_t *out_bip32Path) {
-    uint8_t bip32PathLength = readUInt8(in_out_buffer, in_out_bufferLength);
-    if (bip32PathLength < 1 || bip32PathLength > MAX_BIP32_PATH_LENGTH) {
-        PRINTF("Invalid bip32 path length");
-        THROW(0x6700);
+/**
+ * Read a bip32 path. The data is copied to the output. The output must have a size of at least MAX_BIP32_PATH_LENGTH.
+ */
+WARN_UNUSED_RESULT
+bool read_bip32_path(uint8_t **in_out_buffer, uint16_t *in_out_buffer_length, uint32_t *out_bip32_path,
+    uint8_t *out_bip32_path_length) {
+    RETURN_ON_ERROR(
+        !read_u8(in_out_buffer, in_out_buffer_length, out_bip32_path_length),
+        false
+    );
+    RETURN_ON_ERROR(
+        *out_bip32_path_length < 1 || *out_bip32_path_length > MAX_BIP32_PATH_LENGTH,
+        false,
+        "Invalid bip32 path length\n"
+    );
+    for (uint8_t i = 0; i < *out_bip32_path_length; i++) {
+        RETURN_ON_ERROR(
+            !read_u32(in_out_buffer, in_out_buffer_length, &out_bip32_path[i]),
+            false
+        );
     }
-    for (uint8_t i = 0; i < bip32PathLength; i++) {
-        out_bip32Path[i] = readUInt32(in_out_buffer, in_out_bufferLength);
-    }
-    return bip32PathLength;
+    return true;
 }
 
-void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, parsed_tx_t *out) {
-    if (version != TRANSACTION_VERSION_LEGACY && version != TRANSACTION_VERSION_ALBATROSS) {
-        PRINTF("Unsupported transaction version");
-        THROW(0x6a80);
-    }
+WARN_UNUSED_RESULT
+error_t parse_tx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_length, parsed_tx_t *out) {
+    RETURN_ON_ERROR(
+        version != TRANSACTION_VERSION_LEGACY && version != TRANSACTION_VERSION_ALBATROSS,
+        ERROR_NOT_SUPPORTED,
+        "Unsupported transaction version\n"
+    );
 
     // For serialization format see serialize_content in primitives/transaction/src/lib.rs in core-rs-albatross.
 
     // Read the recipient data
-    uint16_t data_length = readUInt16(&buffer, &buffer_length);
+    uint16_t data_length;
+    RETURN_ON_ERROR(
+        !read_u16(&buffer, &buffer_length, &data_length),
+        ERROR_READ
+    );
     PRINTF("data length: %u\n", data_length);
-    uint8_t *data = readSubBuffer(data_length, &buffer, &buffer_length);
+    uint8_t *data;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(data_length, &buffer, &buffer_length, &data),
+        ERROR_READ
+    );
 
     // Read the sender
-    uint8_t *sender = readSubBuffer(20, &buffer, &buffer_length);
-    uint8_t sender_type = readUInt8(&buffer, &buffer_length);
+    uint8_t *sender, sender_type;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(20, &buffer, &buffer_length, &sender)
+        || !read_u8(&buffer, &buffer_length, &sender_type),
+        ERROR_READ
+    );
 
     // Read the recipient
-    uint8_t *recipient = readSubBuffer(20, &buffer, &buffer_length);
-    uint8_t recipient_type = readUInt8(&buffer, &buffer_length);
+    uint8_t *recipient, recipient_type;
+    RETURN_ON_ERROR(
+        !read_sub_buffer(20, &buffer, &buffer_length, &recipient)
+        || !read_u8(&buffer, &buffer_length, &recipient_type),
+        ERROR_READ
+    );
 
     // Process the value field
-    uint64_t value = readUInt64(&buffer, &buffer_length);
-    PRINTF("value: %lu\n", value);
-    parse_amount(value, "NIM", out->value);
+    uint64_t value;
+    RETURN_ON_ERROR(
+        !read_u64(&buffer, &buffer_length, &value),
+        ERROR_READ
+    );
+    PRINTF("value: %u\n", value);
+    RETURN_ON_ERROR(
+        parse_amount(value, "NIM", out->value)
+    );
     PRINTF("amount: %s\n", out->value);
 
     // Process the fee field
-    uint64_t fee = readUInt64(&buffer, &buffer_length);
-    PRINTF("fee: %lu\n", fee);
-    parse_amount(fee, "NIM", out->fee);
+    uint64_t fee;
+    RETURN_ON_ERROR(
+        !read_u64(&buffer, &buffer_length, &fee),
+        ERROR_READ
+    );
+    PRINTF("fee: %u\n", fee);
+    RETURN_ON_ERROR(
+        parse_amount(fee, "NIM", out->fee)
+    );
     PRINTF("fee amount: %s\n", out->fee);
 
     // Read the validity start height
-    uint32_t validity_start_height = readUInt32(&buffer, &buffer_length);
+    uint32_t validity_start_height;
+    RETURN_ON_ERROR(
+        !read_u32(&buffer, &buffer_length, &validity_start_height),
+        ERROR_READ
+    );
 
     // Process the network field
-    uint8_t network_id = readUInt8(&buffer, &buffer_length);
-    parse_network_id(version, network_id, out->network);
+    uint8_t network_id;
+    RETURN_ON_ERROR(
+        !read_u8(&buffer, &buffer_length, &network_id),
+        ERROR_READ
+    );
+    RETURN_ON_ERROR(
+        parse_network_id(version, network_id, out->network)
+    );
 
     // Process the flags field
-    uint8_t flags = readUInt8(&buffer, &buffer_length);
+    uint8_t flags;
+    RETURN_ON_ERROR(
+        !read_u8(&buffer, &buffer_length, &flags),
+        ERROR_READ
+    );
     PRINTF("flags: %u\n", flags);
 
     // Read the sender data
     uint16_t sender_data_length = 0;
     uint8_t *sender_data = NULL;
     if (version == TRANSACTION_VERSION_ALBATROSS) {
-        sender_data_length = readVecU8(&buffer, &buffer_length, &sender_data);
+        RETURN_ON_ERROR(
+            !read_serde_vec_u8(&buffer, &buffer_length, &sender_data, &sender_data_length),
+            ERROR_READ
+        );
         PRINTF("sender data length: %u\n", sender_data_length);
     }
 
-    if (buffer_length != 0) {
-        PRINTF("Transaction too long");
-        THROW(0x6700);
-    }
+    RETURN_ON_ERROR(
+        buffer_length != 0,
+        ERROR_INVALID_LENGTH,
+        "Transaction too long\n"
+    );
 
     // Note: the transaction validity checks here are mostly for good measure and not entirely thorough or strict as
     // they don't need to be, because an invalid transaction will be rejected by the network nodes, even if we let it
@@ -626,22 +853,24 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
 
     if (sender_type == ACCOUNT_TYPE_STAKING) {
         // Outgoing staking transaction from the staking contract.
-        if (flags || data_length) {
+        RETURN_ON_ERROR(
             // Would theoretically be allowed, but we don't support that yet. E.g. we don't support an unstaking tx to
             // at the same time create a contract. It can also not be a transaction to the staking contract, because
             // the sender and recipient address can not be the same.
-            PRINTF("Invalid flags or recipient data");
-            THROW(0x6a80);
-        }
-        if (!is_staking_contract(sender)) {
-            // This does not currently seem to be enforced by core-rs-albatross but probably should be. The check here
-            // can be removed once core-rs-albatross checks for it.
-            PRINTF("Sender must be staking contract");
-            THROW(0x6a80);
-        }
+            flags || data_length,
+            ERROR_NOT_SUPPORTED,
+            "Invalid flags or recipient data\n"
+        );
+        RETURN_ON_ERROR(
+            !is_staking_contract(sender),
+            ERROR_INCORRECT_DATA,
+            "Sender must be staking contract\n"
+        );
 
-        staking_outgoing_data_type_t staking_outgoing_type = parse_staking_outgoing_data(version, sender_data,
-            sender_data_length);
+        staking_outgoing_data_type_t staking_outgoing_type;
+        RETURN_ON_ERROR(
+            parse_staking_outgoing_data(version, sender_data, sender_data_length, &staking_outgoing_type)
+        );
         out->transaction_type = TRANSACTION_TYPE_STAKING_OUTGOING;
 
         switch (staking_outgoing_type) {
@@ -650,28 +879,33 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
                 break;
             default:
                 // Note that validator transactions are not supported yet.
-                PRINTF("Invalid outgoing staking transaction data type");
-                THROW(0x6a80);
+                PRINTF("Invalid outgoing staking transaction data type\n");
+                return ERROR_NOT_SUPPORTED;
         }
 
         // Print the recipient address and set unused data to empty string.
-        print_address(recipient, out->type_specific.normal_or_staking_outgoing_tx.recipient);
+        RETURN_ON_ERROR(
+            print_address(recipient, out->type_specific.normal_or_staking_outgoing_tx.recipient)
+        );
         strcpy(out->type_specific.normal_or_staking_outgoing_tx.extra_data_label, "");
         strcpy(out->type_specific.normal_or_staking_outgoing_tx.extra_data, "");
 
-        return;
+        return ERROR_NONE;
     }
 
     switch (recipient_type) {
         case ACCOUNT_TYPE_BASIC: {
-            if (flags || sender_data_length) {
-                // Signaling flag and sender data would theoretically be allowed, but we don't support that yet.
-                PRINTF("Invalid flags or sender data");
-                THROW(0x6a80);
-            }
+            RETURN_ON_ERROR(
+                // Signaling flag and sender data might theoretically be allowed, but we don't support that yet.
+                flags || sender_data_length,
+                ERROR_NOT_SUPPORTED,
+                "Invalid flags or sender data\n"
+            );
 
-            bool is_cashlink = parse_normal_tx_data(data, data_length,
-                &out->type_specific.normal_or_staking_outgoing_tx);
+            bool is_cashlink;
+            RETURN_ON_ERROR(
+                parse_normal_tx_data(data, data_length, &out->type_specific.normal_or_staking_outgoing_tx, &is_cashlink)
+            );
             PRINTF("data: %s - is Cashlink: %d\n", out->type_specific.normal_or_staking_outgoing_tx.extra_data,
                 is_cashlink);
 
@@ -682,30 +916,37 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
 
             // Print the recipient address
             // We're ignoring the sender, as it's not too relevant where the funds are coming from.
-            print_address(recipient, out->type_specific.normal_or_staking_outgoing_tx.recipient);
+            RETURN_ON_ERROR(
+                print_address(recipient, out->type_specific.normal_or_staking_outgoing_tx.recipient)
+            );
             break;
         }
 
         case ACCOUNT_TYPE_VESTING:
         case ACCOUNT_TYPE_HTLC: {
-            if (flags != TX_FLAG_CONTRACT_CREATION || sender_data_length) {
+            RETURN_ON_ERROR(
                 // Contract creation flag must be set, and no other flags are allowed at the same time.
                 // Sender data would theoretically be allowed, but we don't currently support that.
-                PRINTF("Invalid flags or sender data");
-                THROW(0x6a80);
-            }
+                flags != TX_FLAG_CONTRACT_CREATION || sender_data_length,
+                ERROR_NOT_SUPPORTED,
+                "Invalid flags or sender data\n"
+            );
 
             // Note that we're ignoring the recipient address for contract creation transactions as it must be the
             // deterministically calculated contract address, otherwise it's an invalid transaction rejected by the
             // network nodes.
             if (recipient_type == ACCOUNT_TYPE_VESTING) {
-                parse_vesting_creation_data(version, data, data_length, sender, sender_type, value,
-                    &out->type_specific.vesting_creation_tx);
+                RETURN_ON_ERROR(
+                    parse_vesting_creation_data(version, data, data_length, sender, sender_type, value,
+                        &out->type_specific.vesting_creation_tx)
+                );
                 out->transaction_type = TRANSACTION_TYPE_VESTING_CREATION;
                 out->transaction_label_type = TRANSACTION_LABEL_TYPE_VESTING_CREATION;
             } else { // ACCOUNT_TYPE_HTLC
-                parse_htlc_creation_data(version, data, data_length, sender, sender_type, validity_start_height,
-                    &out->type_specific.htlc_creation_tx);
+                RETURN_ON_ERROR(
+                    parse_htlc_creation_data(version, data, data_length, sender, sender_type, validity_start_height,
+                        &out->type_specific.htlc_creation_tx)
+                );
                 out->transaction_type = TRANSACTION_TYPE_HTLC_CREATION;
                 out->transaction_label_type = TRANSACTION_LABEL_TYPE_HTLC_CREATION;
             }
@@ -714,20 +955,23 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
 
         case ACCOUNT_TYPE_STAKING: {
             // Incoming staking transaction to the staking contract.
-            if ((flags && flags != TX_FLAG_SIGNALING) || sender_data_length) {
+            RETURN_ON_ERROR(
                 // Flags must be either unset or the signaling flag.
                 // Sender data would theoretically be allowed, but we don't currently support that.
-                PRINTF("Invalid flags or sender data");
-                THROW(0x6a80);
-            }
-            if (!is_staking_contract(recipient)) {
-                // This does not currently seem to be enforced by core-rs-albatross but probably should be. The check
-                // here can be removed once core-rs-albatross checks for it.
-                PRINTF("Recipient must be staking contract");
-                THROW(0x6a80);
-            }
+                (flags && flags != TX_FLAG_SIGNALING) || sender_data_length,
+                ERROR_NOT_SUPPORTED,
+                "Invalid flags or sender data\n"
+            );
+            RETURN_ON_ERROR(
+                !is_staking_contract(recipient),
+                ERROR_INCORRECT_DATA,
+                "Recipient must be staking contract\n"
+            );
 
-            parse_staking_incoming_data(version, data, data_length, sender, &out->type_specific.staking_incoming_tx);
+            RETURN_ON_ERROR(
+                parse_staking_incoming_data(version, data, data_length, sender,
+                    &out->type_specific.staking_incoming_tx)
+            );
             out->transaction_type = TRANSACTION_TYPE_STAKING_INCOMING;
 
             switch (out->type_specific.staking_incoming_tx.type) {
@@ -748,26 +992,29 @@ void parseTx(transaction_version_t version, uint8_t *buffer, uint16_t buffer_len
                     break;
                 default:
                     // Note that validator transactions are not supported yet.
-                    PRINTF("Invalid incoming staking transaction data type");
-                    THROW(0x6a80);
+                    PRINTF("Invalid incoming staking transaction data type\n");
+                    return ERROR_NOT_SUPPORTED;
             }
 
-            if ((flags == TX_FLAG_SIGNALING)
-                != is_signaling_transaction_data(out->type_specific.staking_incoming_tx.type)) {
-                PRINTF("Signaling flag mismatch");
-                THROW(0x6a80);
-            }
+            RETURN_ON_ERROR(
+                (flags == TX_FLAG_SIGNALING)
+                    != is_signaling_transaction_data(out->type_specific.staking_incoming_tx.type),
+                ERROR_INCORRECT_DATA,
+                "Signaling flag mismatch\n"
+            );
             break;
         }
 
         default:
-            PRINTF("Invalid recipient type");
-            THROW(0x6a80);
+            PRINTF("Invalid recipient type\n");
+            return ERROR_INCORRECT_DATA;
     }
+
+    return ERROR_NONE;
 }
 
-bool isPrintableAscii(uint8_t *data, uint16_t dataLength) {
-    for (uint16_t i = 0; i < dataLength; i++) {
+bool is_printable_ascii(uint8_t *data, uint16_t data_length) {
+    for (uint16_t i = 0; i < data_length; i++) {
         if ((data[i] < /* space */ 32) || (data[i] > /* tilde */ 126)) return false;
     }
     return true;

@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "constants.h"
+#include "error_macros.h"
 #include "signature_proof.h"
 
 typedef struct {
@@ -41,11 +42,13 @@ typedef struct {
     };
 } tx_data_staking_incoming_t;
 
-void parse_staking_incoming_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
+WARN_UNUSED_RESULT
+error_t parse_staking_incoming_data(transaction_version_t version, uint8_t *data, uint16_t data_length, uint8_t *sender,
     tx_data_staking_incoming_t *out);
 
-staking_outgoing_data_type_t parse_staking_outgoing_data(transaction_version_t version, uint8_t *sender_data,
-    uint16_t sender_data_length);
+WARN_UNUSED_RESULT
+error_t parse_staking_outgoing_data(transaction_version_t version, uint8_t *sender_data, uint16_t sender_data_length,
+    staking_outgoing_data_type_t *out_staking_outgoing_type);
 
 bool is_staking_contract(uint8_t *address_bytes);
 
