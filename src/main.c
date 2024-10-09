@@ -649,6 +649,7 @@ sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t 
             < sizeof(ctx.req.msg.confirm.printedMessageLabel) + sizeof(ctx.req.msg.confirm.printedMessage),
         "Hash context memory overlaps with output hash memory\n"
     );
+#if defined(NIMIQ_DEBUG) && NIMIQ_DEBUG
     // Check output size manually, because cx_hash_final doesn't check it, in contrast to cx_hash_no_throw.
     RETURN_ON_ERROR(
         cx_hash_get_size(&ctx.req.msg.prepare.messageHashContext.header)
@@ -658,6 +659,7 @@ sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t 
         SW_CRYPTOGRAPHY_FAIL,
         "Invalid message hash output length\n"
     );
+#endif
     RETURN_ON_ERROR(
         cx_hash_final(
             /* hash context */ &ctx.req.msg.prepare.messageHashContext.header,

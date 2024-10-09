@@ -106,6 +106,10 @@ SDK_SOURCE_PATH += lib_u2f
 # Enabling DEBUG flag will enable PRINTF and disable optimizations
 # Instead of setting it here you can also enable this flag during compilation via `make DEBUG=1`
 #DEBUG = 1
+# Make the debug flag available in the code as NIMIQ_DEBUG preprocessor define.
+ifneq ($(DEBUG), 0)
+DEFINES   += NIMIQ_DEBUG
+endif
 
 # Extend the base Makefile for standard apps
 include $(BOLOS_SDK)/Makefile.standard_app
