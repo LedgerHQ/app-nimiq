@@ -18,6 +18,8 @@
 #ifndef _NIMIQ_ERROR_MACROS_H_
 #define _NIMIQ_ERROR_MACROS_H_
 
+#include <string.h> // for strstr used in ON_ERROR
+
 #ifdef TEST
 #include <stdio.h>
 #define PRINTF(msg, arg) printf(msg, arg)
@@ -33,6 +35,8 @@
 #define VA_ARGS_OMIT_FIRST(first, ...) __VA_ARGS__
 #define VA_ARGS_IF_NOT_EMPTY_EMIT(content, ...) __VA_OPT__(content)
 #define VA_ARGS_IF_EMPTY_EMIT(content, ...) VA_ARGS##__VA_OPT__(_DROP)(content)
+
+void app_exit(); // used in ON_ERROR
 
 /**
  * Conditionally run specified statements and print debug messages, if an expression results in an error.
@@ -53,6 +57,34 @@
  */
 #define ON_ERROR(expression, statements, ...) \
     do { \
+        /* Sanity check expressions for improper use of logical expressions, where their result, which is 0 or 1, */ \
+        /* is assigned as received error and used instead of the actually received error which gets lost in the */ \
+        /* logical expression. */ \
+        if ( \
+            ( \
+                /* The statements use received_error. Can also be via ERROR_TO_SW(). */ \
+                (strstr(#statements, "received_error") || strstr(#statements, "ERROR_TO_SW()")) \
+                || \
+                /* Or a custom error is set which uses received_error. Can also be via ERROR_TO_SW(). */ \
+                VA_ARGS_IF_NOT_EMPTY_EMIT( \
+                    (strstr(#__VA_ARGS__, "received_error") || strstr(#__VA_ARGS__, "ERROR_TO_SW()")), \
+                    VA_ARGS_PICK_FIRST(__VA_ARGS__) \
+                ) \
+                /* Or no custom error is set, in which case received_error is used as the error. */ \
+                VA_ARGS_IF_EMPTY_EMIT( \
+                    true, \
+                    VA_ARGS_PICK_FIRST(__VA_ARGS__) \
+                ) \
+            ) \
+            /* And it's a logical expression that uses || */ \
+            && (strstr(#expression, "||") /* || strstr(#expression, "&&") */) \
+        ) { \
+            PRINTF( \
+                "    !!! Error: using result of logical expression %s as error code, which is 0 or 1.\n", \
+                #expression \
+            ); \
+            app_exit(); \
+        } \
         const error_t received_error = (expression); \
         if (received_error) { \
             PRINTF("    !!! Error 0x%02x returned by %s in %s (file %s, line %d)\n", received_error, #expression, \
