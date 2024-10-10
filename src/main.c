@@ -751,8 +751,10 @@ sw_t handle_apdu(unsigned int *out_flags, uint16_t *out_apdu_length) {
             PRINTF("Handle INS_KEEP_ALIVE\n");
             return handle_keep_alive(out_flags);
         default:
-            PRINTF("Invalid instruction\n");
-            return SW_INS_NOT_SUPPORTED;
+            RETURN_ERROR(
+                SW_INS_NOT_SUPPORTED,
+                "Invalid instruction\n"
+            );
     }
 }
 

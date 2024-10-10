@@ -327,8 +327,10 @@ error_t ui_transaction_signing() {
             break;
         default:
             // This should not happen, as the transaction parser should have set a valid transaction label type.
-            PRINTF("Invalid transaction label type\n");
-            return ERROR_UNEXPECTED;
+            RETURN_ERROR(
+                ERROR_UNEXPECTED,
+                "Invalid transaction label type\n"
+            );
     }
 
     switch (PARSED_TX.transaction_type) {
@@ -347,8 +349,10 @@ error_t ui_transaction_signing() {
         case TRANSACTION_TYPE_HTLC_CREATION:
         default:
             // This should not happen, as the transaction parser should have set a valid transaction type.
-            PRINTF("Invalid transaction type\n");
-            return ERROR_UNEXPECTED;
+            RETURN_ERROR(
+                ERROR_UNEXPECTED,
+                "Invalid transaction type\n"
+            );
     }
 
     review_entries_launch_use_case_review(
@@ -408,8 +412,10 @@ error_t ui_message_signing(message_display_type_t messageDisplayType, bool start
             review_subtitle = "The message is displayed as SHA-256 hash.";
             break;
         default:
-            PRINTF("Invalid message display type\n");
-            return ERROR_UNEXPECTED;
+            RETURN_ERROR(
+                ERROR_UNEXPECTED,
+                "Invalid message display type\n"
+            );
     }
     RETURN_ON_ERROR(
         ui_message_prepare_review_entries(messageDisplayType)

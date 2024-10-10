@@ -43,6 +43,24 @@ void app_exit(); // used in debug expression sanity check in ON_ERROR
 #define VA_ARGS_IF_EMPTY_EMIT(content, ...) VA_ARGS##__VA_OPT__(_DROP)(content)
 
 /**
+ * Return from the current function with an error code and print debug messages.
+ *
+ * error: the error code to return. Expressions of type void are not allowed.
+ * message: an error message to print in debug builds. Note that in contrast to the conditional ON_ERROR and its
+ *     derivative macros like RETURN_ON_ERROR, it is mandatory here, under the assumption that the non-conditional
+ *     error is returned where the error originates, while ON_ERROR and its derivative macros are oftentimes used for
+ *     forwarding an error.
+ * Optional parameters: optional additional parameters of the message to pass to PRINTF.
+ */
+#define RETURN_ERROR(error, message, ...) \
+    do { \
+        PRINTF("    !!! Error 0x%02x returned in %s (file %s, line %d)\n", error, __func__, __FILE__, __LINE__); \
+        PRINTF("        "); \
+        PRINTF(message __VA_OPT__(,) __VA_ARGS__); \
+        return (error); \
+    } while(0)
+
+/**
  * Conditionally run specified statements and print debug messages, if an expression results in an error.
  *
  * expression: an expression to evaluate. Non-zero return codes are considered errors.

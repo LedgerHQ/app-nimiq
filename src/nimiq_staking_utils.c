@@ -108,8 +108,10 @@ error_t parse_staking_incoming_data(transaction_version_t version, uint8_t *data
 
         default:
             // Note that validator transactions are not supported yet.
-            PRINTF("Invalid incoming staking transaction data type\n");
-            return ERROR_NOT_SUPPORTED;
+            RETURN_ERROR(
+                ERROR_NOT_SUPPORTED,
+                "Invalid incoming staking transaction data type\n"
+            );
     }
 
     if (out->type != ADD_STAKE) {

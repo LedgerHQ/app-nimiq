@@ -71,8 +71,10 @@ error_t iban_check(char in[32], char *check) {
             // Letters convert to a two digit number, increase the counter one more time
             counter++;
         } else {
-            PRINTF("Invalid ascii code in iban check\n");
-            return ERROR_INCORRECT_DATA;
+            RETURN_ERROR(
+                ERROR_INCORRECT_DATA,
+                "Invalid ascii code in iban check\n"
+            );
         }
     }
 
@@ -243,8 +245,10 @@ error_t parse_network_id(transaction_version_t version, uint8_t network_id, char
     } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 3 : 7)) {
         strcpy(out, "Bounty");
     } else {
-        PRINTF("Invalid network\n");
-        return ERROR_INCORRECT_DATA;
+        RETURN_ERROR(
+            ERROR_INCORRECT_DATA,
+            "Invalid network\n"
+        );
     }
     return ERROR_NONE;
 }
@@ -352,8 +356,10 @@ error_t parse_htlc_creation_data(transaction_version_t version, uint8_t *data, u
             break;
         default:
             // Invalid hash algorithm. Notably, ARGON2d is blacklisted for HTLCs.
-            PRINTF("Invalid hash algorithm or blacklisted ARGON2d\n");
-            return ERROR_INCORRECT_DATA;
+            RETURN_ERROR(
+                ERROR_INCORRECT_DATA,
+                "Invalid hash algorithm or blacklisted ARGON2d\n"
+            );
     }
     out->is_using_sha256 = hash_algorithm == HASH_ALGORITHM_SHA256;
 
@@ -879,8 +885,10 @@ error_t parse_tx(transaction_version_t version, uint8_t *buffer, uint16_t buffer
                 break;
             default:
                 // Note that validator transactions are not supported yet.
-                PRINTF("Invalid outgoing staking transaction data type\n");
-                return ERROR_NOT_SUPPORTED;
+                RETURN_ERROR(
+                    ERROR_NOT_SUPPORTED,
+                    "Invalid outgoing staking transaction data type\n"
+                );
         }
 
         // Print the recipient address and set unused data to empty string.
@@ -992,8 +1000,10 @@ error_t parse_tx(transaction_version_t version, uint8_t *buffer, uint16_t buffer
                     break;
                 default:
                     // Note that validator transactions are not supported yet.
-                    PRINTF("Invalid incoming staking transaction data type\n");
-                    return ERROR_NOT_SUPPORTED;
+                    RETURN_ERROR(
+                        ERROR_NOT_SUPPORTED,
+                        "Invalid incoming staking transaction data type\n"
+                    );
             }
 
             RETURN_ON_ERROR(
@@ -1006,8 +1016,10 @@ error_t parse_tx(transaction_version_t version, uint8_t *buffer, uint16_t buffer
         }
 
         default:
-            PRINTF("Invalid recipient type\n");
-            return ERROR_INCORRECT_DATA;
+            RETURN_ERROR(
+                ERROR_INCORRECT_DATA,
+                "Invalid recipient type\n"
+            );
     }
 
     return ERROR_NONE;

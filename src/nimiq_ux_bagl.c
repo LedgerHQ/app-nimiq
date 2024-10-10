@@ -603,8 +603,10 @@ error_t ui_transaction_signing() {
             break;
         default:
             // This should not happen, as the transaction parser should have set a valid transaction label type.
-            PRINTF("Invalid transaction label type\n");
-            return ERROR_UNEXPECTED;
+            RETURN_ERROR(
+                ERROR_UNEXPECTED,
+                "Invalid transaction label type\n"
+            );
     }
 
     const ux_flow_step_t* const * transaction_flow;
@@ -624,8 +626,10 @@ error_t ui_transaction_signing() {
             break;
         default:
             // This should not happen, as the transaction parser should have set a valid transaction type.
-            PRINTF("Invalid transaction type\n");
-            return ERROR_UNEXPECTED;
+            RETURN_ERROR(
+                ERROR_UNEXPECTED,
+                "Invalid transaction type\n"
+            );
     }
 
     ux_flow_init(0, transaction_flow, NULL);
