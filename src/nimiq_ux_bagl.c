@@ -27,11 +27,11 @@
 #include "nimiq_ux_utils_message_signing.h"
 
 // These are declared in main.c
-void app_exit();
 void on_rejected();
 void on_address_approved();
 void on_transaction_approved();
 void on_message_approved();
+void app_exit();
 
 // Main menu UI steps and flow
 
@@ -453,14 +453,7 @@ UX_STEP_NOCB_INIT(
 UX_STEP_NOCB_INIT(
     ux_message_flow_message_step,
     paging,
-    {
-        ON_ERROR(
-            ux_message_signing_prepare_printed_message(),
-            { app_exit(); },
-            ERROR_UNEXPECTED,
-            "Unexpected error in ux_message_signing_prepare_printed_message\n"
-        );
-    },
+    ux_message_signing_prepare_printed_message(),
     {
         ctx.req.msg.confirm.printedMessageLabel,
         ctx.req.msg.confirm.printedMessage,
@@ -469,14 +462,7 @@ UX_OPTIONAL_STEP_CB(
     ux_message_flow_display_ascii_step,
     pbb,
     ctx.req.msg.isPrintableAscii && ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_ASCII,
-    {
-        ON_ERROR(
-            ui_message_signing(MESSAGE_DISPLAY_TYPE_ASCII, true),
-            { app_exit(); },
-            ERROR_UNEXPECTED,
-            "Unexpected error in ui_message_signing\n"
-        );
-    },
+    ui_message_signing(MESSAGE_DISPLAY_TYPE_ASCII, true),
     {
         &C_icon_certificate,
         "Display",
@@ -487,14 +473,7 @@ UX_OPTIONAL_STEP_CB(
     pbb,
     ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
         && ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_HEX,
-    {
-        ON_ERROR(
-            ui_message_signing(MESSAGE_DISPLAY_TYPE_HEX, true),
-            { app_exit(); },
-            ERROR_UNEXPECTED,
-            "Unexpected error in ui_message_signing\n"
-        );
-    },
+    ui_message_signing(MESSAGE_DISPLAY_TYPE_HEX, true),
     {
         &C_icon_certificate,
         "Display",
@@ -504,14 +483,7 @@ UX_OPTIONAL_STEP_CB(
     ux_message_flow_display_hash_step,
     pbb,
     ctx.req.msg.confirm.displayType != MESSAGE_DISPLAY_TYPE_HASH,
-    {
-        ON_ERROR(
-            ui_message_signing(MESSAGE_DISPLAY_TYPE_HASH, true),
-            { app_exit(); },
-            ERROR_UNEXPECTED,
-            "Unexpected error in ui_message_signing\n"
-        );
-    },
+    ui_message_signing(MESSAGE_DISPLAY_TYPE_HASH, true),
     {
         &C_icon_certificate,
         "Display",
@@ -567,8 +539,7 @@ void ui_public_key() {
     ux_flow_init(0, ux_public_key_flow, NULL);
 }
 
-WARN_UNUSED_RESULT
-error_t ui_transaction_signing() {
+void ui_transaction_signing() {
     // The complete title will be "Confirm <PARSED_TX.transaction_label>"
     switch (PARSED_TX.transaction_label_type) {
         case TRANSACTION_LABEL_TYPE_REGULAR_TRANSACTION:
@@ -603,9 +574,9 @@ error_t ui_transaction_signing() {
             break;
         default:
             // This should not happen, as the transaction parser should have set a valid transaction label type.
-            RETURN_ERROR(
-                ERROR_UNEXPECTED,
-                "Invalid transaction label type\n"
+            LEDGER_ASSERT(
+                false,
+                "Invalid transaction label type"
             );
     }
 
@@ -626,23 +597,18 @@ error_t ui_transaction_signing() {
             break;
         default:
             // This should not happen, as the transaction parser should have set a valid transaction type.
-            RETURN_ERROR(
-                ERROR_UNEXPECTED,
-                "Invalid transaction type\n"
+            LEDGER_ASSERT(
+                false,
+                "Invalid transaction type"
             );
     }
 
     ux_flow_init(0, transaction_flow, NULL);
-    return ERROR_NONE;
 }
 
-WARN_UNUSED_RESULT
-error_t ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
+void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
     ctx.req.msg.confirm.displayType = messageDisplayType;
     ux_flow_init(0, ux_message_flow, startAtMessageDisplay ? &ux_message_flow_message_step : NULL);
-    // Note that for BAGL, this method never returns an error, but for NBGL it can theoretically, which is why it has
-    // return type error_t.
-    return ERROR_NONE;
 }
 
 // resolve io_seproxyhal_display as io_seproxyhal_display_default

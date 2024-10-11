@@ -53,12 +53,11 @@ error_t iban_check(char in[32], char *check) {
 
     // Convert the address to a number-only string
     for (unsigned int i = 0; i < 36; i++) {
-        RETURN_ON_ERROR(
-            // This error should not occur, given the number of iterations and the fact that at least two address chars
+        LEDGER_ASSERT(
+            // This assertion should hold, given the number of iterations and the fact that at least two address chars
             // are digits, which increase the counter only by one.
-            counter >= 70,
-            ERROR_UNEXPECTED,
-            "Overflow in iban check\n"
+            counter < 70,
+            "Overflow in iban check"
         );
         if (address[i] >= 48 && address[i] <= 57) {
             total_number[counter++] = address[i];
@@ -197,11 +196,10 @@ error_t parse_amount(uint64_t amount, char *asset, char *out) {
             i += 1;
             buffer[i] = '.';
         }
-        RETURN_ON_ERROR(
-            // If AMOUNT_MAX_SIZE is defined correctly and the loop works correctly, this shouldn't happen.
-            i >= AMOUNT_MAX_SIZE,
-            ERROR_UNEXPECTED,
-            "Overflow in parse_amount\n"
+        LEDGER_ASSERT(
+            // This assertion should hold, if AMOUNT_MAX_SIZE is defined correctly and the loop works correctly.
+            i < AMOUNT_MAX_SIZE,
+            "Overflow in parse_amount"
         );
     }
     // reverse order

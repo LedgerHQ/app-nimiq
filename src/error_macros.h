@@ -18,9 +18,13 @@
 #ifndef _NIMIQ_ERROR_MACROS_H_
 #define _NIMIQ_ERROR_MACROS_H_
 
+#include "ledger_assert.h" // For LEDGER_ASSERT in ON_ERROR, ERROR_TO_SW, and files that include error_macros.h
+
+#include "constants.h" // For error_t and sw_t
+
 #ifdef TEST
-#include <stdio.h>
-#define PRINTF(msg, arg) printf(msg, arg)
+#define PRINTF(...) printf(__VA_ARGS__)
+#define LEDGER_ASSERT(test, ...) assert(test)
 #define PIC(code) code
 #define TARGET_NANOS 1
 #else
@@ -29,7 +33,6 @@
 
 #if defined(NIMIQ_DEBUG) && NIMIQ_DEBUG
 #include <string.h> // for strstr used in debug expression sanity check in ON_ERROR
-void app_exit(); // used in debug expression sanity check in ON_ERROR
 #define DEBUG_EMIT(...) __VA_ARGS__
 #else
 #define DEBUG_EMIT(...) /* drop contents */
@@ -84,31 +87,26 @@ void app_exit(); // used in debug expression sanity check in ON_ERROR
         /* which is 0 or 1, is assigned and used as received error, instead of the actually received error which */ \
         /* gets lost in the logical expression. */ \
         DEBUG_EMIT({ \
-            if ( \
-                ( \
-                    /* The statements use received_error. Can also be via ERROR_TO_SW(). */ \
-                    (strstr(#statements, "received_error") || strstr(#statements, "ERROR_TO_SW()")) \
-                    || \
-                    /* Or a custom error is set which uses received_error. Can also be via ERROR_TO_SW(). */ \
-                    VA_ARGS_IF_NOT_EMPTY_EMIT( \
-                        (strstr(#__VA_ARGS__, "received_error") || strstr(#__VA_ARGS__, "ERROR_TO_SW()")), \
-                        VA_ARGS_PICK_FIRST(__VA_ARGS__) \
-                    ) \
-                    /* Or no custom error is set, in which case received_error is used as the error. */ \
-                    VA_ARGS_IF_EMPTY_EMIT( \
-                        true, \
-                        VA_ARGS_PICK_FIRST(__VA_ARGS__) \
-                    ) \
+            bool is_received_error_used = ( \
+                /* If no custom error is set, received_error is used in any case as it's assigned to error. */ \
+                VA_ARGS_IF_EMPTY_EMIT( \
+                    true, \
+                    VA_ARGS_PICK_FIRST(__VA_ARGS__) \
                 ) \
-                /* And it's a logical expression that uses || */ \
-                && (strstr(#expression, "||") /* || strstr(#expression, "&&") */) \
-            ) { \
-                PRINTF( \
-                    "    !!! Error: using result of logical expression %s as error code, which is 0 or 1.\n", \
-                    #expression \
-                ); \
-                app_exit(); \
-            } \
+                /* If a custom error is set, check whether it or the statements use received_error, which might */ \
+                /* also be via ERROR_TO_SW(). */ \
+                VA_ARGS_IF_NOT_EMPTY_EMIT( \
+                    strstr(#__VA_ARGS__, "received_error") || strstr(#__VA_ARGS__, "ERROR_TO_SW()") \
+                    || strstr(#statements, "received_error") || strstr(#statements, "ERROR_TO_SW()"), \
+                    VA_ARGS_PICK_FIRST(__VA_ARGS__) \
+                ) \
+            ); \
+            /* Assert that the received error is either not used, or not the result of a logical expression. */ \
+            LEDGER_ASSERT( \
+                !is_received_error_used || !strstr(#expression, "||"), \
+                "Using result of logical expression %s as error code", \
+                #expression \
+            ); \
         }) \
         const error_t received_error = (expression); \
         if (received_error) { \
@@ -173,15 +171,8 @@ void app_exit(); // used in debug expression sanity check in ON_ERROR
  * For usage as custom error in ON_ERROR and derivative macros to automatically convert an error of type error_t to a
  * status word of type sw_t.
  */
-#define ERROR_TO_SW() \
-    ( \
-        received_error == ERROR_READ || received_error == ERROR_INVALID_LENGTH ? SW_WRONG_DATA_LENGTH \
-        : received_error == ERROR_INCORRECT_DATA ? SW_INCORRECT_DATA \
-        : received_error == ERROR_NOT_SUPPORTED ? SW_NOT_SUPPORTED \
-        : received_error == ERROR_CRYPTOGRAPHY ? SW_CRYPTOGRAPHY_FAIL \
-        : received_error == ERROR_NONE ? SW_OK \
-        : /* ERROR_TRUE, ERROR_UNEXPECTED or an error which is incorrectly missing here */ SW_BAD_STATE \
-    )
+sw_t error_to_sw(error_t error);
+#define ERROR_TO_SW() error_to_sw(received_error)
 
 // WARN_UNUSED_RESULT is copied over from ledger-secure-sdk's decorators.h, such that it's known to the IDE, even if the
 // ledger-secure-sdk source is not available to it.

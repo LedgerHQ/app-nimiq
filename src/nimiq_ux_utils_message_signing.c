@@ -18,9 +18,8 @@
 #include "nimiq_ux_utils_message_signing.h"
 #include "globals.h"
 
-WARN_UNUSED_RESULT
-error_t ux_message_signing_prepare_printed_message() {
-    // Any errors here are unexpected, as all data has already been verified in handleSignMessage
+void ux_message_signing_prepare_printed_message() {
+    // No errors are expected here, as all data has already been verified in handleSignMessage
     switch (ctx.req.msg.confirm.displayType) {
         case MESSAGE_DISPLAY_TYPE_ASCII:
             strcpy(ctx.req.msg.confirm.printedMessageLabel, "Message");
@@ -29,20 +28,19 @@ error_t ux_message_signing_prepare_printed_message() {
             break;
         case MESSAGE_DISPLAY_TYPE_HEX:
             strcpy(ctx.req.msg.confirm.printedMessageLabel, "Message Hex");
-            RETURN_ON_ERROR(
+            LEDGER_ASSERT(
                 print_hex(ctx.req.msg.printableMessage, ctx.req.msg.messageLength, ctx.req.msg.confirm.printedMessage,
-                    sizeof(ctx.req.msg.confirm.printedMessage)),
-                ERROR_UNEXPECTED
+                    sizeof(ctx.req.msg.confirm.printedMessage)) == ERROR_NONE,
+                "Failed to print message hex"
             );
             break;
         case MESSAGE_DISPLAY_TYPE_HASH:
             strcpy(ctx.req.msg.confirm.printedMessageLabel, "Message Hash");
-            RETURN_ON_ERROR(
+            LEDGER_ASSERT(
                 print_hex(ctx.req.msg.confirm.messageHash, sizeof(ctx.req.msg.confirm.messageHash),
-                    ctx.req.msg.confirm.printedMessage, sizeof(ctx.req.msg.confirm.printedMessage)),
-                ERROR_UNEXPECTED
+                    ctx.req.msg.confirm.printedMessage, sizeof(ctx.req.msg.confirm.printedMessage)) == ERROR_NONE,
+                "Failed to print message hash"
             );
             break;
     }
-    return ERROR_NONE;
 }

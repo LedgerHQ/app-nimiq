@@ -27,11 +27,11 @@
 #include "nimiq_ux_utils_message_signing.h"
 
 // These are declared in main.c
-void app_exit();
 void on_rejected();
 void on_address_approved();
 void on_transaction_approved();
 void on_message_approved();
+void app_exit();
 
 // Main menu and about menu
 
@@ -115,24 +115,20 @@ static void review_entries_initialize() {
     memset(&review_entries, 0, sizeof(review_entries));
 }
 
-WARN_UNUSED_RESULT
-static error_t review_entries_add(const char *item, const char *value) {
-    RETURN_ON_ERROR(
-        review_entries.count >= REVIEW_ENTRIES_MAX_COUNT,
-        ERROR_UNEXPECTED,
-        "Too many nbgl ui entries\n"
+static void review_entries_add(const char *item, const char *value) {
+    LEDGER_ASSERT(
+        review_entries.count < REVIEW_ENTRIES_MAX_COUNT,
+        "Too many nbgl ui entries"
     );
     review_entries.entries[review_entries.count].item = item;
     review_entries.entries[review_entries.count].value = value;
     review_entries.count++;
-    return ERROR_NONE;
 }
 #undef REVIEW_ENTRIES_MAX_COUNT
 
-WARN_UNUSED_RESULT
-static error_t review_entries_add_optional(const char *item, const char *value, bool condition) {
-    if (!condition) return ERROR_NONE;
-    return review_entries_add(item, value);
+static void review_entries_add_optional(const char *item, const char *value, bool condition) {
+    if (!condition) return;
+    review_entries_add(item, value);
 }
 
 static void review_entries_launch_use_case_review(
@@ -181,82 +177,72 @@ static void review_entries_launch_use_case_review(
 
 // Transaction signing UI
 
-WARN_UNUSED_RESULT
-static error_t ui_transaction_prepare_review_entries_normal_or_staking_outgoing() {
+static void ui_transaction_prepare_review_entries_normal_or_staking_outgoing() {
     review_entries_initialize();
-    RETURN_ON_ERROR(
-        review_entries_add_optional(
-            "Amount",
-            PARSED_TX.value,
-            ux_transaction_generic_has_amount_entry()
-        )
-        || review_entries_add(
-            "Recipient",
-            PARSED_TX_NORMAL_OR_STAKING_OUTGOING.recipient
-        )
-        || review_entries_add_optional(
-            PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data_label,
-            PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data,
-            ux_transaction_normal_or_staking_outgoing_has_data_entry()
-        )
-        || review_entries_add_optional(
-            "Fee",
-            PARSED_TX.fee,
-            ux_transaction_generic_has_fee_entry()
-        )
-        || review_entries_add(
-            "Network",
-            PARSED_TX.network
-        ),
-        ERROR_UNEXPECTED,
+    review_entries_add_optional(
+        "Amount",
+        PARSED_TX.value,
+        ux_transaction_generic_has_amount_entry()
     );
-    return ERROR_NONE;
+    review_entries_add(
+        "Recipient",
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.recipient
+    );
+    review_entries_add_optional(
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data_label,
+        PARSED_TX_NORMAL_OR_STAKING_OUTGOING.extra_data,
+        ux_transaction_normal_or_staking_outgoing_has_data_entry()
+    );
+    review_entries_add_optional(
+        "Fee",
+        PARSED_TX.fee,
+        ux_transaction_generic_has_fee_entry()
+    );
+    review_entries_add(
+        "Network",
+        PARSED_TX.network
+    );
 }
 
-WARN_UNUSED_RESULT
-static error_t ui_transaction_prepare_review_entries_staking_incoming() {
+static void ui_transaction_prepare_review_entries_staking_incoming() {
     review_entries_initialize();
-    RETURN_ON_ERROR(
-        // Amount for non-signaling transactions
-        review_entries_add_optional(
-            "Amount",
-            PARSED_TX.value,
-            ux_transaction_generic_has_amount_entry()
-        )
-        // Amount in incoming staking data for signaling transactions
-        || review_entries_add_optional(
-            "Amount",
-            PARSED_TX_STAKING_INCOMING.set_active_stake_or_retire_stake.amount,
-            ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry()
-        )
-        || review_entries_add_optional(
-            "Staker",
-            PARSED_TX_STAKING_INCOMING.validator_or_staker_address,
-            ux_transaction_staking_incoming_has_staker_address_entry()
-        )
-        || review_entries_add_optional(
-            "Delegation",
-            PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker.delegation,
-            ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry()
-        )
-        || review_entries_add_optional(
-            "Reactivate all Stake",
-            PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker
-                .update_staker_reactivate_all_stake,
-            ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry()
-        )
-        || review_entries_add_optional(
-            "Fee",
-            PARSED_TX.fee,
-            ux_transaction_generic_has_fee_entry()
-        )
-        || review_entries_add(
-            "Network",
-            PARSED_TX.network
-        ),
-        ERROR_UNEXPECTED
+    // Amount for non-signaling transactions
+    review_entries_add_optional(
+        "Amount",
+        PARSED_TX.value,
+        ux_transaction_generic_has_amount_entry()
     );
-    return ERROR_NONE;
+    // Amount in incoming staking data for signaling transactions
+    review_entries_add_optional(
+        "Amount",
+        PARSED_TX_STAKING_INCOMING.set_active_stake_or_retire_stake.amount,
+        ux_transaction_staking_incoming_has_set_active_stake_or_retire_stake_amount_entry()
+    );
+    review_entries_add_optional(
+        "Staker",
+        PARSED_TX_STAKING_INCOMING.validator_or_staker_address,
+        ux_transaction_staking_incoming_has_staker_address_entry()
+    );
+    review_entries_add_optional(
+        "Delegation",
+        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker.delegation,
+        ux_transaction_staking_incoming_has_create_staker_or_update_staker_delegation_entry()
+    );
+    review_entries_add_optional(
+        "Reactivate all Stake",
+        PARSED_TX_STAKING_INCOMING.create_staker_or_update_staker
+            .update_staker_reactivate_all_stake,
+        ux_transaction_staking_incoming_has_update_staker_reactivate_all_stake_entry()
+    );
+    review_entries_add_optional(
+        "Fee",
+        PARSED_TX.fee,
+        ux_transaction_generic_has_fee_entry()
+    );
+    review_entries_add(
+        "Network",
+        PARSED_TX.network
+    );
 }
 
 static void on_transaction_reviewed(bool approved) {
@@ -269,8 +255,7 @@ static void on_transaction_reviewed(bool approved) {
     }
 }
 
-WARN_UNUSED_RESULT
-error_t ui_transaction_signing() {
+void ui_transaction_signing() {
     // Pointers to pre-existing const strings in read-only data segment / flash memory. Not meant to be written to.
     // While the strings are a bit repetitive, and thus somewhat wasteful in flash memory, we still prefer this approach
     // over assembling the string in RAM memory, because that is the much more limited resource. Manual newlines are set
@@ -327,31 +312,27 @@ error_t ui_transaction_signing() {
             break;
         default:
             // This should not happen, as the transaction parser should have set a valid transaction label type.
-            RETURN_ERROR(
-                ERROR_UNEXPECTED,
-                "Invalid transaction label type\n"
+            LEDGER_ASSERT(
+                false,
+                "Invalid transaction label type"
             );
     }
 
     switch (PARSED_TX.transaction_type) {
         case TRANSACTION_TYPE_NORMAL:
         case TRANSACTION_TYPE_STAKING_OUTGOING:
-            RETURN_ON_ERROR(
-                ui_transaction_prepare_review_entries_normal_or_staking_outgoing()
-            );
+            ui_transaction_prepare_review_entries_normal_or_staking_outgoing();
             break;
         case TRANSACTION_TYPE_STAKING_INCOMING:
-            RETURN_ON_ERROR(
-                ui_transaction_prepare_review_entries_staking_incoming()
-            );
+            ui_transaction_prepare_review_entries_staking_incoming();
             break;
         case TRANSACTION_TYPE_VESTING_CREATION:
         case TRANSACTION_TYPE_HTLC_CREATION:
         default:
             // This should not happen, as the transaction parser should have set a valid transaction type.
-            RETURN_ERROR(
-                ERROR_UNEXPECTED,
-                "Invalid transaction type\n"
+            LEDGER_ASSERT(
+                false,
+                "Invalid transaction type"
             );
     }
 
@@ -364,21 +345,17 @@ error_t ui_transaction_signing() {
         /* choice_callback */ on_transaction_reviewed,
         /* use_small_font */ false
     );
-    return ERROR_NONE;
 }
 
 //////////////////////////////////////////////////////////////////////
 
 // Message signing UI
 
-WARN_UNUSED_RESULT
-static error_t ui_message_prepare_review_entries(message_display_type_t messageDisplayType) {
+static void ui_message_prepare_review_entries(message_display_type_t messageDisplayType) {
     review_entries_initialize();
     ctx.req.msg.confirm.displayType = messageDisplayType; // used in ux_message_signing_prepare_printed_message
-    RETURN_ON_ERROR(
-        ux_message_signing_prepare_printed_message()
-    );
-    return review_entries_add(
+    ux_message_signing_prepare_printed_message();
+    review_entries_add(
         ctx.req.msg.confirm.printedMessageLabel,
         ctx.req.msg.confirm.printedMessage
     );
@@ -395,8 +372,7 @@ static void on_message_reviewed(bool approved) {
     }
 }
 
-WARN_UNUSED_RESULT
-error_t ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
+void ui_message_signing(message_display_type_t messageDisplayType, bool startAtMessageDisplay) {
     UNUSED(startAtMessageDisplay);
 
     // Pointer to pre-existing const strings in read-only data segment / flash memory. Not meant to be written to.
@@ -412,14 +388,13 @@ error_t ui_message_signing(message_display_type_t messageDisplayType, bool start
             review_subtitle = "The message is displayed as SHA-256 hash.";
             break;
         default:
-            RETURN_ERROR(
-                ERROR_UNEXPECTED,
-                "Invalid message display type\n"
+            // This should not happen, as the request parser should have set a valid message display type.
+            LEDGER_ASSERT(
+                false,
+                "Invalid message display type"
             );
     }
-    RETURN_ON_ERROR(
-        ui_message_prepare_review_entries(messageDisplayType)
-    );
+    ui_message_prepare_review_entries(messageDisplayType);
 
     review_entries_launch_use_case_review(
         /* operation_type */ TYPE_MESSAGE,
@@ -430,7 +405,6 @@ error_t ui_message_signing(message_display_type_t messageDisplayType, bool start
         /* choice_callback */ on_message_reviewed,
         /* use_small_font */ true
     );
-    return ERROR_NONE;
 }
 
 #endif // HAVE_NBGL

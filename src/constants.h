@@ -139,36 +139,43 @@ typedef enum: uint8_t {
     /**
      * Not further specified error of value 1/true, which is the automatic result of logical expressions, or variables
      * and return types of type bool that evaluate to true. This error is mostly defined to correctly classify such
-     * automatic results, but should not actually be used, in favor of the more specific other errors.
+     * automatic results.
+     *
+     * Instead of using this error, one of the more specific other errors should be used.
      */
     ERROR_TRUE = 0x1,
+    /**
+     * An unexpected error occurred that shouldn't have happened.
+     *
+     * Instead of using this error, preferably exit the app immediately, for example via a LEDGER_ASSERT, for less
+     * overhead of error handling in functions that otherwise don't error.
+     */
+    ERROR_UNEXPECTED = 0x2,
     /**
      * Error reading data from a buffer, typically because the buffer is shorter than expected, but could also be
      * because of unexpected values being read, for example when reading structured data like signature proofs.
      */
-    ERROR_READ = 0x2,
+    ERROR_READ = 0x3,
     /**
      * The length of some data is longer than allowed, or does not match the expected or advertised length.
      */
-    ERROR_INVALID_LENGTH = 0x3,
+    ERROR_INVALID_LENGTH = 0x4,
     /**
      * The data is semantically incorrect. It might for example contain a disallowed, inconsistent or unexpected value.
      */
-    ERROR_INCORRECT_DATA = 0x4,
+    ERROR_INCORRECT_DATA = 0x5,
     /**
      * Some operation or data is not supported by the ledger app or core-albatross.
      */
-    ERROR_NOT_SUPPORTED = 0x5,
+    ERROR_NOT_SUPPORTED = 0x6,
     /**
      * An error in a call of a cryptography method occurred, typically because of incorrect parameters passed, but also
      * for example if a method aborted because the device is locked.
      */
-    ERROR_CRYPTOGRAPHY = 0x6,
-    /**
-     * An unexpected error occurred that shouldn't have happened.
-     */
-    ERROR_UNEXPECTED = 0x7,
+    ERROR_CRYPTOGRAPHY = 0x7,
 } error_t;
+#define ERROR_TRUE _Pragma("GCC warning \"Use of ERROR_TRUE is discouraged\"") ERROR_TRUE
+#define ERROR_UNEXPECTED _Pragma("GCC warning \"Use of ERROR_UNEXPECTED is discouraged\"") ERROR_UNEXPECTED
 
 /**
  * APDU status words for methods that operate on the APDU protocol.

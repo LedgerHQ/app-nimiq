@@ -536,11 +536,7 @@ sw_t handle_sign_transaction(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint1
         "Failed to parse transaction\n"
     );
 
-    RETURN_ON_ERROR(
-        ui_transaction_signing(),
-        ERROR_TO_SW(),
-        "Failed to show transaction ui\n"
-    );
+    ui_transaction_signing();
     *out_flags = IO_ASYNCH_REPLY;
     return SW_OK;
 }
@@ -673,22 +669,18 @@ sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t 
         "Failed to finalize message hash\n"
     );
 
-    RETURN_ON_ERROR(
-        ui_message_signing(
-            // Depending on whether the data can be printed as ASCII or hex, default to ASCII, hex or hash display,
-            // unless a specific preference was provided. The user can still switch the display type during the
-            // confirmation (not implemented for NBGL yet).
-            ctx.req.msg.isPrintableAscii
-                && !(ctx.req.msg.flags & (MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX | MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH))
-                ? MESSAGE_DISPLAY_TYPE_ASCII
-                : ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
-                    && !(ctx.req.msg.flags & MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH)
-                    ? MESSAGE_DISPLAY_TYPE_HEX
-                    : MESSAGE_DISPLAY_TYPE_HASH,
-            false
-        ),
-        ERROR_TO_SW(),
-        "Failed to show message ui\n"
+    ui_message_signing(
+        // Depending on whether the data can be printed as ASCII or hex, default to ASCII, hex or hash display, unless
+        // a specific preference was provided. The user can still switch the display type during the confirmation (not
+        // implemented yet for NBGL).
+        ctx.req.msg.isPrintableAscii
+            && !(ctx.req.msg.flags & (MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HEX | MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH))
+            ? MESSAGE_DISPLAY_TYPE_ASCII
+            : ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH
+                && !(ctx.req.msg.flags & MESSAGE_FLAG_PREFER_DISPLAY_TYPE_HASH)
+                ? MESSAGE_DISPLAY_TYPE_HEX
+                : MESSAGE_DISPLAY_TYPE_HASH,
+        false
     );
     *out_flags = IO_ASYNCH_REPLY;
     return SW_OK;
