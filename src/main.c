@@ -66,7 +66,7 @@ static error_t set_result_get_public_key(uint8_t *destination, uint16_t destinat
  * Send off a response APDU for an async request previously initiated in an io_exchange with flag IO_ASYNCH_REPLY. For
  * this purpose, the reply is sent with the IO_RETURN_AFTER_TX flag.
  */
-static void io_send_async_response_apdu(uint8_t *data, uint16_t data_length, sw_t sw) {
+static void io_finalize_async_reply(uint8_t *data, uint16_t data_length, sw_t sw) {
     if (data_length > sizeof(G_io_apdu_buffer) - /* for sw */ 2) {
         sw = SW_WRONG_DATA_LENGTH;
     }
@@ -91,7 +91,7 @@ static void io_send_async_response_apdu(uint8_t *data, uint16_t data_length, sw_
 
 void on_rejected() {
     PRINTF("User rejected the request.\n");
-    io_send_async_response_apdu(NULL, 0, SW_DENY);
+    io_finalize_async_reply(NULL, 0, SW_DENY);
 }
 
 void on_address_approved() {
@@ -101,7 +101,7 @@ void on_address_approved() {
         set_result_get_public_key(G_io_apdu_buffer, sizeof(G_io_apdu_buffer), &data_length),
         { sw = ERROR_TO_SW(); }
     );
-    io_send_async_response_apdu(G_io_apdu_buffer, data_length, sw);
+    io_finalize_async_reply(G_io_apdu_buffer, data_length, sw);
 }
 
 void on_transaction_approved() {
@@ -242,7 +242,7 @@ void on_transaction_approved() {
 end:
     os_memset(privateKeyData, 0, sizeof(privateKeyData));
     os_memset(&privateKey, 0, sizeof(privateKey));
-    io_send_async_response_apdu(G_io_apdu_buffer, data_length, sw);
+    io_finalize_async_reply(G_io_apdu_buffer, data_length, sw);
 }
 
 void on_message_approved() {
@@ -291,13 +291,13 @@ void on_message_approved() {
     os_memset(privateKeyData, 0, sizeof(privateKeyData));
     os_memset(&privateKey, 0, sizeof(privateKey));
 
-    io_send_async_response_apdu(G_io_apdu_buffer, data_length, sw);
+    io_finalize_async_reply(G_io_apdu_buffer, data_length, sw);
 }
 
 void u2f_send_keep_alive() {
     PRINTF("Send U2F heartbeat\n");
     ctx.u2fTimer = 0;
-    io_send_async_response_apdu(NULL, 0, SW_KEEP_ALIVE);
+    io_finalize_async_reply(NULL, 0, SW_KEEP_ALIVE);
 }
 
 WARN_UNUSED_RESULT
@@ -328,10 +328,10 @@ static error_t set_result_get_public_key(uint8_t *destination, uint16_t destinat
 }
 
 WARN_UNUSED_RESULT
-sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t data_length, unsigned int *out_flags,
-    uint16_t *out_apdu_length) {
-    *out_flags = 0;
+sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t data_length,
+    uint16_t *out_apdu_length, bool *out_start_async_reply) {
     *out_apdu_length = 0;
+    *out_start_async_reply = false;
     sw_t sw = SW_OK;
 
     uint8_t privateKeyData[64]; // the private key is only 32 bytes, but os_derive_bip32_with_seed_no_throw expects 64
@@ -463,7 +463,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
         );
 
         ui_public_key();
-        *out_flags = IO_ASYNCH_REPLY;
+        *out_start_async_reply = true;
     } else {
         // Sync request, in which the public key is returned without any user interaction.
         GOTO_ON_ERROR(
@@ -482,8 +482,8 @@ end:
 
 WARN_UNUSED_RESULT
 sw_t handle_sign_transaction(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t data_length,
-    unsigned int *out_flags) {
-    *out_flags = 0;
+    bool *out_start_async_reply) {
+    *out_start_async_reply = false;
 
     RETURN_ON_ERROR(
         ((p1 != P1_FIRST) && (p1 != P1_MORE))
@@ -537,13 +537,14 @@ sw_t handle_sign_transaction(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint1
     );
 
     ui_transaction_signing();
-    *out_flags = IO_ASYNCH_REPLY;
+    *out_start_async_reply = true;
     return SW_OK;
 }
 
 WARN_UNUSED_RESULT
-sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t data_length, unsigned int *out_flags) {
-    *out_flags = 0;
+sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t data_length,
+    bool *out_start_async_reply) {
+    *out_start_async_reply = false;
 
     RETURN_ON_ERROR(
         ((p1 != P1_FIRST) && (p1 != P1_MORE))
@@ -682,23 +683,23 @@ sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t 
                 : MESSAGE_DISPLAY_TYPE_HASH,
         false
     );
-    *out_flags = IO_ASYNCH_REPLY;
+    *out_start_async_reply = true;
     return SW_OK;
 }
 
 WARN_UNUSED_RESULT
-sw_t handle_keep_alive(unsigned int *out_flags) {
+sw_t handle_keep_alive(bool *out_start_async_reply) {
     // Renew an async reply interrupted by u2f_send_keep_alive, which was then followed by a client request of
     // INS_KEEP_ALIVE to continue the request, by starting a new async reply, which can eventually be resolved with the
     // actual reply, or another keep alive timeout.
-    *out_flags = IO_ASYNCH_REPLY;
+    *out_start_async_reply = true;
     return SW_OK;
 }
 
 WARN_UNUSED_RESULT
-sw_t handle_apdu(unsigned int *out_flags, uint16_t *out_apdu_length) {
-    *out_flags = 0;
+sw_t handle_apdu(uint16_t *out_apdu_length, bool *out_start_async_reply) {
     *out_apdu_length = 0;
+    *out_start_async_reply = false;
 
     // Don't need to check for os_global_pin_is_validated(), as in newer SDK versions it's already done in io_exchange.
 
@@ -718,8 +719,8 @@ sw_t handle_apdu(unsigned int *out_flags, uint16_t *out_apdu_length) {
                 G_io_apdu_buffer[OFFSET_P2],
                 G_io_apdu_buffer + OFFSET_CDATA,
                 G_io_apdu_buffer[OFFSET_LC],
-                out_flags,
-                out_apdu_length
+                out_apdu_length,
+                out_start_async_reply
             );
         case INS_SIGN_TX:
             PRINTF("Handle INS_SIGN_TX\n");
@@ -728,7 +729,7 @@ sw_t handle_apdu(unsigned int *out_flags, uint16_t *out_apdu_length) {
                 G_io_apdu_buffer[OFFSET_P2],
                 G_io_apdu_buffer + OFFSET_CDATA,
                 G_io_apdu_buffer[OFFSET_LC],
-                out_flags
+                out_start_async_reply
             );
         case INS_SIGN_MESSAGE:
             PRINTF("Handle INS_SIGN_MESSAGE\n");
@@ -737,11 +738,11 @@ sw_t handle_apdu(unsigned int *out_flags, uint16_t *out_apdu_length) {
                 G_io_apdu_buffer[OFFSET_P2],
                 G_io_apdu_buffer + OFFSET_CDATA,
                 G_io_apdu_buffer[OFFSET_LC],
-                out_flags
+                out_start_async_reply
             );
         case INS_KEEP_ALIVE:
             PRINTF("Handle INS_KEEP_ALIVE\n");
-            return handle_keep_alive(out_flags);
+            return handle_keep_alive(out_start_async_reply);
         default:
             RETURN_ERROR(
                 SW_INS_NOT_SUPPORTED,
@@ -751,9 +752,9 @@ sw_t handle_apdu(unsigned int *out_flags, uint16_t *out_apdu_length) {
 }
 
 void nimiq_main() {
-    unsigned int flags = 0;
     uint16_t command_apdu_length = 0; // length of a received APDU
     uint16_t response_apdu_length = 0; // length of our response APDU
+    bool start_async_reply = false;
 
     // DESIGN NOTE: the bootloader ignores the way APDU are fetched. The only
     // goal is to retrieve APDU.
@@ -762,25 +763,32 @@ void nimiq_main() {
     // switch event, before the APDU is replied to the bootloader. This avoid
     // APDU injection faults.
     for (;;) {
-        command_apdu_length = io_exchange(CHANNEL_APDU | flags, response_apdu_length);
+        // Send current APDU response of length response_apdu_length from G_io_apdu_buffer, then read new APDU of length
+        // command_apdu_length into G_io_apdu_buffer. Sending of the response is skipped, if flag IO_ASYNCH_REPLY is
+        // set, in which case a reply can be delivered at a later time via io_finalize_async_reply, which sends it with
+        // flag IO_RETURN_AFTER_TX, which returns after the transfer and skips receiving a new APDU. I.e. new command
+        // APDUs are always received here, regardless of whether IO_ASYNCH_REPLY is set or not, as IO_RETURN_AFTER_TX is
+        // not set, and io_exchange will wait until a new APDU is received.
+        // Note that this method can THROW, which is then handled in main().
+        uint8_t channel_and_flags = CHANNEL_APDU | (start_async_reply ? IO_ASYNCH_REPLY: 0);
+        command_apdu_length = io_exchange(channel_and_flags, response_apdu_length);
 
         sw_t sw;
         if (command_apdu_length < OFFSET_LC + 1
             || command_apdu_length != G_io_apdu_buffer[OFFSET_LC] + OFFSET_CDATA) {
             PRINTF("No or invalid length APDU received\n");
-            flags = 0;
-            response_apdu_length = 0;
             sw = SW_WRONG_DATA_LENGTH;
         } else {
             PRINTF("New APDU received:\n%.*H\n", command_apdu_length, G_io_apdu_buffer);
-            sw = handle_apdu(&flags, &response_apdu_length);
+            sw = handle_apdu(&response_apdu_length, &start_async_reply);
         }
 
         if (sw != SW_OK) {
             // Wipe global data to ensure it can't be continued to be used or misinterpreted.
             os_memset(&ctx, 0, sizeof(ctx));
-            flags = 0;
+            // Enforce only sending an error code.
             response_apdu_length = 0;
+            start_async_reply = false;
         }
 
         // Finalize the APDU response by appending the status word. The final response will be sent out with io_exchange
