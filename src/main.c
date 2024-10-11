@@ -915,8 +915,34 @@ __attribute__((section(".boot"))) int main() {
             CATCH_OTHER(e) {
                 // Note even though we're jumping out of the try block, we don't need to call CLOSE_TRY here, because
                 // CATCH_OTHER already does so automatically.
-                if (e == EXCEPTION_IO_RESET || e == INVALID_STATE) continue; // Reset IO and UX and restart.
-                else break; // On other exceptions terminate the application.
+                if (e == EXCEPTION_IO_RESET || e == INVALID_STATE) {
+                    PRINTF("Received EXCEPTION_IO_RESET or INVALID_STATE. Resetting the app...");
+                    continue; // Reset IO and UX and restart.
+                } else {
+                    // On other exceptions terminate the application.
+                    PRINTF("Exiting app with exception 0x%04X\n", e);
+                    // (Code below taken from SDK's lib_standard_app/main.c)
+#ifdef HAVE_DEBUG_THROWS
+                    // Disable USB and BLE, the app have crashed and is going to be exited
+                    // This is necessary to avoid device freeze while displaying throw error
+                    // in a specific case:
+                    // - the app receives an APDU
+                    // - the app throws before replying
+                    // - the app displays the error on screen
+                    // - the user unplug the NanoX instead of confirming the screen
+                    // - the NanoX goes on battery power and display the lock screen
+                    // - the user plug the NanoX instead of entering its pin
+                    // - the device is frozen, battery should be removed
+                    USB_power(0);
+#ifdef HAVE_BLE
+                    BLE_power(0, NULL);
+#endif // HAVE_BLE
+                    // Display crash info on screen for debug purpose
+                    assert_display_exit();
+#else // HAVE_DEBUG_THROWS
+                    break;
+#endif // HAVE_DEBUG_THROWS
+                }
             }
             FINALLY {
             }
