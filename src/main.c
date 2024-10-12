@@ -110,7 +110,7 @@ void on_transaction_approved() {
 
     // initialize private key
     uint8_t privateKeyData[64]; // the private key is only 32 bytes, but os_derive_bip32_with_seed_no_throw expects 64
-    cx_ecfp_private_key_t privateKey;
+    cx_ecfp_256_private_key_t privateKey;
     GOTO_ON_ERROR(
         os_derive_bip32_with_seed_no_throw(
             /* derivation mode */ HDW_ED25519_SLIP10,
@@ -134,7 +134,7 @@ void on_transaction_approved() {
         "Failed to derive private key\n"
     );
     // The private key data is also cleared at the end, but for extra paranoia, clear it as soon as possible.
-    os_memset(privateKeyData, 0, sizeof(privateKeyData));
+    memset(privateKeyData, 0, sizeof(privateKeyData));
 
     // For incoming staking transactions which are meant to include a staker signature proof in their recipient data but
     // only include the empty default proof, we replace that empty signature proof with an actually signed staker proof.
@@ -175,16 +175,16 @@ void on_transaction_approved() {
         );
         // Overwrite the signature in the signature proof in rawTx via pointers in validator_or_staker_signature_proof
         // which point to the original buffer.
-        os_memmove(PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof.signature, G_io_apdu_buffer, 64);
+        memmove(PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof.signature, G_io_apdu_buffer, 64);
         created_staker_signature = true;
 
         // Similarly, overwrite the public key in the signature proof with the ledger account public key as staker, with
         // G_io_apdu_buffer as temporary buffer again. Check with a compile time assertion that it can fit the temp data
         _Static_assert(
-            sizeof(cx_ecfp_public_key_t) <= sizeof(G_io_apdu_buffer),
+            sizeof(cx_ecfp_256_public_key_t) <= sizeof(G_io_apdu_buffer),
             "G_io_apdu_buffer does not fit public key\n"
         );
-        cx_ecfp_public_key_t *temporary_public_key_pointer = (cx_ecfp_public_key_t*) G_io_apdu_buffer;
+        cx_ecfp_256_public_key_t *temporary_public_key_pointer = (cx_ecfp_256_public_key_t*) G_io_apdu_buffer;
         GOTO_ON_ERROR(
             cx_ecfp_generate_pair_no_throw(
                 /* curve */ CX_CURVE_Ed25519,
@@ -231,7 +231,7 @@ void on_transaction_approved() {
 
     if (created_staker_signature) {
         // Need to return the staker signature such that the caller can also update the staker signature proof in his tx
-        os_memmove(
+        memmove(
             G_io_apdu_buffer + data_length,
             PARSED_TX_STAKING_INCOMING.validator_or_staker_signature_proof.signature,
             64
@@ -240,8 +240,8 @@ void on_transaction_approved() {
     }
 
 end:
-    os_memset(privateKeyData, 0, sizeof(privateKeyData));
-    os_memset(&privateKey, 0, sizeof(privateKey));
+    memset(privateKeyData, 0, sizeof(privateKeyData));
+    memset(&privateKey, 0, sizeof(privateKey));
     io_finalize_async_reply(G_io_apdu_buffer, data_length, sw);
 }
 
@@ -251,7 +251,7 @@ void on_message_approved() {
 
     // initialize private key
     uint8_t privateKeyData[64]; // the private key is only 32 bytes, but os_derive_bip32_with_seed_no_throw expects 64
-    cx_ecfp_private_key_t privateKey;
+    cx_ecfp_256_private_key_t privateKey;
     ON_ERROR(
         os_derive_bip32_with_seed_no_throw(
             /* derivation mode */ HDW_ED25519_SLIP10,
@@ -288,8 +288,8 @@ void on_message_approved() {
         SW_CRYPTOGRAPHY_FAIL,
         "Failed to derive private key or to sign\n"
     );
-    os_memset(privateKeyData, 0, sizeof(privateKeyData));
-    os_memset(&privateKey, 0, sizeof(privateKey));
+    memset(privateKeyData, 0, sizeof(privateKeyData));
+    memset(&privateKey, 0, sizeof(privateKey));
 
     io_finalize_async_reply(G_io_apdu_buffer, data_length, sw);
 }
@@ -335,7 +335,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
     sw_t sw = SW_OK;
 
     uint8_t privateKeyData[64]; // the private key is only 32 bytes, but os_derive_bip32_with_seed_no_throw expects 64
-    cx_ecfp_private_key_t privateKey;
+    cx_ecfp_256_private_key_t privateKey;
 
     GOTO_ON_ERROR(
         ((p1 != P1_SIGNATURE) && (p1 != P1_NO_SIGNATURE))
@@ -410,7 +410,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
         "Failed to derive private key\n"
     );
     // The private key data is also cleared at the end, but for extra paranoia, clear it as soon as possible.
-    os_memset(privateKeyData, 0, sizeof(privateKeyData));
+    memset(privateKeyData, 0, sizeof(privateKeyData));
 
     GOTO_ON_ERROR(
         cx_ecfp_generate_pair_no_throw(
@@ -441,7 +441,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
         );
     }
     // The private key is also cleared at the end, but for extra paranoia, clear it as soon as possible.
-    os_memset(&privateKey, 0, sizeof(privateKey));
+    memset(&privateKey, 0, sizeof(privateKey));
 
     if (p2 & P2_CONFIRM) {
         // Async request, in which we display the address and ask the user to confirm.
@@ -475,8 +475,8 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
     }
 
 end:
-    os_memset(privateKeyData, 0, sizeof(privateKeyData));
-    os_memset(&privateKey, 0, sizeof(privateKey));
+    memset(privateKeyData, 0, sizeof(privateKeyData));
+    memset(&privateKey, 0, sizeof(privateKey));
     return sw;
 }
 
@@ -511,7 +511,7 @@ sw_t handle_sign_transaction(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint1
             "Transaction too long\n"
         );
         ctx.req.tx.rawTxLength = data_length;
-        os_memmove(ctx.req.tx.rawTx, data_buffer, data_length);
+        memmove(ctx.req.tx.rawTx, data_buffer, data_length);
     } else {
         // read more raw tx data
         uint32_t offset = ctx.req.tx.rawTxLength;
@@ -521,7 +521,7 @@ sw_t handle_sign_transaction(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint1
             SW_WRONG_DATA_LENGTH,
             "Transaction too long\n"
         );
-        os_memmove(ctx.req.tx.rawTx+offset, data_buffer, data_length);
+        memmove(ctx.req.tx.rawTx+offset, data_buffer, data_length);
     }
 
     if (p2 == P2_MORE) {
@@ -529,7 +529,7 @@ sw_t handle_sign_transaction(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint1
         return SW_OK;
     }
 
-    os_memset(&PARSED_TX, 0, sizeof(PARSED_TX));
+    memset(&PARSED_TX, 0, sizeof(PARSED_TX));
     RETURN_ON_ERROR(
         parse_tx(ctx.req.tx.transactionVersion, ctx.req.tx.rawTx, ctx.req.tx.rawTxLength, &PARSED_TX),
         ERROR_TO_SW(),
@@ -605,7 +605,7 @@ sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t 
         );
         // setup printable message
         if (ctx.req.msg.messageLength <= MAX_PRINTABLE_MESSAGE_LENGTH) {
-            os_memmove(ctx.req.msg.printableMessage + ctx.req.msg.processedMessageLength, data_buffer, data_length);
+            memmove(ctx.req.msg.printableMessage + ctx.req.msg.processedMessageLength, data_buffer, data_length);
             ctx.req.msg.isPrintableAscii = ctx.req.msg.isPrintableAscii && is_printable_ascii(data_buffer, data_length);
         }
         // hash message bytes
@@ -785,7 +785,7 @@ void nimiq_main() {
 
         if (sw != SW_OK) {
             // Wipe global data to ensure it can't be continued to be used or misinterpreted.
-            os_memset(&ctx, 0, sizeof(ctx));
+            memset(&ctx, 0, sizeof(ctx));
             // Enforce only sending an error code.
             response_apdu_length = 0;
             start_async_reply = false;
@@ -893,7 +893,7 @@ __attribute__((section(".boot"))) int main() {
     os_boot();
 
     for (;;) {
-        os_memset(&ctx, 0, sizeof(ctx));
+        memset(&ctx, 0, sizeof(ctx));
 
         UX_INIT();
         BEGIN_TRY {

@@ -40,7 +40,7 @@ extern const internal_storage_t N_storage_real;
 #define N_storage (*(volatile internal_storage_t *) PIC(&N_storage_real))
 
 typedef struct publicKeyContext_t {
-    cx_ecfp_public_key_t publicKey;
+    cx_ecfp_256_public_key_t publicKey;
     char address[45];
     uint8_t signature[64];
     bool returnSignature;

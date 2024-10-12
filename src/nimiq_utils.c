@@ -19,7 +19,7 @@
 #include <string.h>
 
 // From Ledger SDK
-#include "os.h"
+#include "os_math.h" // for MIN
 #include "lcx_blake2.h"
 
 #include "nimiq_utils.h"
@@ -139,7 +139,7 @@ error_t public_key_to_address(uint8_t *in, uint8_t *out) {
         || cx_hash_no_throw(&blake2b_context.header, CX_LAST, in, 32, blake2b_hash, 32),
         ERROR_CRYPTOGRAPHY
     );
-    os_memmove(out, blake2b_hash, 20); // the first 20 bytes of the hash are the Nimiq address
+    memmove(out, blake2b_hash, 20); // the first 20 bytes of the hash are the Nimiq address
     return ERROR_NONE;
 }
 

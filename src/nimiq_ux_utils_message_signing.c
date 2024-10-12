@@ -23,7 +23,7 @@ void ux_message_signing_prepare_printed_message() {
     switch (ctx.req.msg.confirm.displayType) {
         case MESSAGE_DISPLAY_TYPE_ASCII:
             strcpy(ctx.req.msg.confirm.printedMessageLabel, "Message");
-            os_memmove(ctx.req.msg.confirm.printedMessage, ctx.req.msg.printableMessage, ctx.req.msg.messageLength);
+            memmove(ctx.req.msg.confirm.printedMessage, ctx.req.msg.printableMessage, ctx.req.msg.messageLength);
             ctx.req.msg.confirm.printedMessage[ctx.req.msg.messageLength] = '\0'; // string terminator
             break;
         case MESSAGE_DISPLAY_TYPE_HEX:
