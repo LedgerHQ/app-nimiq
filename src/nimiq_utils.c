@@ -19,7 +19,6 @@
 #include <string.h>
 
 // From Ledger SDK
-#include "os_math.h" // for MIN
 #include "lcx_blake2.h"
 
 #include "nimiq_utils.h"
@@ -30,7 +29,7 @@
 // primitives/src/coin.rs in core-rs-albatross.
 #define MAX_SAFE_INTEGER 9007199254740991
 
-static const uint8_t AMOUNT_MAX_SIZE = 17;
+#define AMOUNT_MAX_SIZE 17
 
 WARN_UNUSED_RESULT
 error_t iban_check(char in[32], char *check) {
@@ -172,7 +171,7 @@ error_t print_hex(uint8_t *data, uint16_t data_length, char *out, uint16_t out_l
 }
 
 WARN_UNUSED_RESULT
-error_t parse_amount(uint64_t amount, char *asset, char *out) {
+error_t parse_amount(uint64_t amount, const char * const asset, char *out) {
     char buffer[AMOUNT_MAX_SIZE]; // Notably this is not a \0 terminated string because the added dot occupies one spot.
     uint64_t dVal = amount;
     int i, j;
@@ -368,9 +367,10 @@ error_t parse_htlc_creation_data(transaction_version_t version, uint8_t *data, u
         !read_sub_buffer(hash_size, &data, &data_length, &hash_bytes),
         ERROR_READ
     );
-    // Print the hash as hex. Note that %.*h is a non-standard format implemented by the ledger sdk for printing data
-    // as hex (see os_printf.c).
-    snprintf(out->hash_root, MIN(sizeof(out->hash_root), hash_size * 2 + 1), "%.*h", hash_size, hash_bytes);
+    // Print the hash as hex.
+    RETURN_ON_ERROR(
+        print_hex(hash_bytes, hash_size, out->hash_root, sizeof(out->hash_root))
+    );
 
     // Process hash count
     uint8_t hash_count;

@@ -114,7 +114,7 @@ WARN_UNUSED_RESULT
 error_t print_hex(uint8_t *data, uint16_t data_length, char *out, uint16_t out_length);
 
 WARN_UNUSED_RESULT
-error_t parse_amount(uint64_t amount, char *asset, char *out);
+error_t parse_amount(uint64_t amount, const char * const asset, char *out);
 
 WARN_UNUSED_RESULT
 error_t parse_network_id(transaction_version_t version, uint8_t network_id, char *out);

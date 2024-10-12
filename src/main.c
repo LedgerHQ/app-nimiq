@@ -119,8 +119,8 @@ void on_transaction_approved() {
             /* path length */ ctx.req.tx.bip32PathLength,
             /* out */ privateKeyData,
             /* chain code */ NULL,
-            /* seed key */ "ed25519 seed",
-            /* seed key length */ 12
+            /* seed key */ NULL, // use the default for HDW_ED25519_SLIP10, which is "ed25519 seed"
+            /* seed key length */ 0
         )
         || cx_ecfp_init_private_key_no_throw(
             /* curve */ CX_CURVE_Ed25519,
@@ -260,8 +260,8 @@ void on_message_approved() {
             /* path length */ ctx.req.msg.bip32PathLength,
             /* out */ privateKeyData,
             /* chain code */ NULL,
-            /* seed key */ "ed25519 seed",
-            /* seed key length */ 12
+            /* seed key */ NULL, // use the default for HDW_ED25519_SLIP10, which is "ed25519 seed"
+            /* seed key length */ 0
         )
         || cx_ecfp_init_private_key_no_throw(
             /* curve */ CX_CURVE_Ed25519,
@@ -395,8 +395,8 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
             /* path length */ bip32PathLength,
             /* out */ privateKeyData,
             /* chain code */ NULL,
-            /* seed key */ "ed25519 seed",
-            /* seed key length */ 12
+            /* seed key */ NULL, // use the default for HDW_ED25519_SLIP10, which is "ed25519 seed"
+            /* seed key length */ 0
         )
         || cx_ecfp_init_private_key_no_throw(
             /* curve */ CX_CURVE_Ed25519,
@@ -575,8 +575,8 @@ sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t 
         RETURN_ON_ERROR(
             cx_hash_update(
                 /* hash context */ &ctx.req.msg.prepare.prefixedMessageHashContext.header,
-                /* data */ MESSAGE_SIGNING_PREFIX,
-                /* data length */ strlen(MESSAGE_SIGNING_PREFIX)
+                /* data */ (uint8_t *) MESSAGE_SIGNING_PREFIX,
+                /* data length */ sizeof(MESSAGE_SIGNING_PREFIX) - /* exclude string terminator */ 1
             ),
             SW_CRYPTOGRAPHY_FAIL,
             "Failed to update message hash\n"
@@ -589,7 +589,7 @@ sw_t handle_sign_message(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_t 
         RETURN_ON_ERROR(
             cx_hash_update(
                 /* hash context */ &ctx.req.msg.prepare.prefixedMessageHashContext.header,
-                /* data */ decimalMessageLength,
+                /* data */ (uint8_t *) decimalMessageLength,
                 /* data length */ strlen(decimalMessageLength)
             ),
             SW_CRYPTOGRAPHY_FAIL,
@@ -824,7 +824,7 @@ unsigned short io_exchange_al(unsigned char channel, unsigned short tx_len) {
     return 0;
 }
 
-unsigned char io_event(unsigned char channel) {
+unsigned char io_event(UNUSED_PARAMETER(uint8_t channel)) {
     // nothing done with the event, throw an error on the transport layer if needed
 
     // can't have more than one tag in the reply, not supported yet.
@@ -839,7 +839,8 @@ unsigned char io_event(unsigned char channel) {
                   SEPROXYHAL_TAG_STATUS_EVENT_FLAG_USB_POWERED)) {
                 THROW(EXCEPTION_IO_RESET);
             }
-            // no break is intentional
+            // fallthrough is intentional
+            FALL_THROUGH;
 
         case SEPROXYHAL_TAG_DISPLAY_PROCESSED_EVENT:
 #ifdef HAVE_BAGL
@@ -904,7 +905,7 @@ __attribute__((section(".boot"))) int main() {
                     internal_storage_t storage;
                     storage.fidoTransport = 0x01;
                     storage.initialized = 0x01;
-                    nvm_write(&N_storage, (void *)&storage, sizeof(internal_storage_t));
+                    nvm_write((void *) &N_storage, (void *) &storage, sizeof(internal_storage_t));
                 }
 
                 // deactivate usb before activating

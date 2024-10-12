@@ -174,8 +174,20 @@
 sw_t error_to_sw(error_t error);
 #define ERROR_TO_SW() error_to_sw(received_error)
 
-// WARN_UNUSED_RESULT is copied over from ledger-secure-sdk's decorators.h, such that it's known to the IDE, even if the
-// ledger-secure-sdk source is not available to it.
+// Decorators
+
+#define UNUSED_PARAMETER(parameter) __attribute__((unused)) parameter
+
+// FALL_THROUGH and WARN_UNUSED_RESULT are copied over from ledger-secure-sdk's decorators.h, such that they're known to
+// the IDE, even if the ledger-secure-sdk source is not available to it.
+
+#ifndef FALL_THROUGH
+#if defined(__GNUC__) && __GNUC__ >= 7 || defined(__clang__) && __clang_major__ >= 12
+#define FALL_THROUGH __attribute__((fallthrough))
+#else
+#define FALL_THROUGH ((void) 0)
+#endif
+#endif
 
 #ifndef WARN_UNUSED_RESULT
 #define WARN_UNUSED_RESULT __attribute__((warn_unused_result))
