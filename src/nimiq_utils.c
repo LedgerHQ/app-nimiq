@@ -25,12 +25,6 @@
 #include "nimiq_staking_utils.h"
 #include "base32.h"
 
-// The maximum allowed NIM amount. Equal to JavaScript's Number.MAX_SAFE_INTEGER, see Coin::MAX_SAFE_VALUE in
-// primitives/src/coin.rs in core-rs-albatross.
-#define MAX_SAFE_INTEGER 9007199254740991
-
-#define AMOUNT_MAX_SIZE 17
-
 WARN_UNUSED_RESULT
 error_t iban_check(char in[32], char *check) {
     unsigned int counter = 0;
@@ -171,19 +165,19 @@ error_t print_hex(uint8_t *data, uint16_t data_length, char *out, uint16_t out_l
 }
 
 WARN_UNUSED_RESULT
-error_t parse_amount(uint64_t amount, const char * const asset, char *out) {
-    char buffer[AMOUNT_MAX_SIZE]; // Notably this is not a \0 terminated string because the added dot occupies one spot.
+error_t parse_amount(uint64_t amount, const char * const ticker,
+    char out[static STRING_LENGTH_NIM_AMOUNT_WITH_TICKER]) {
+    char buffer[STRING_LENGTH_NIM_AMOUNT]; // Note that we don't have to ensure that this is \0 terminated.
     uint64_t dVal = amount;
-    int i, j;
+    uint8_t i, j;
 
     // If the amount can't be represented safely in JavaScript, signal an error
     RETURN_ON_ERROR(
-        amount > MAX_SAFE_INTEGER,
+        amount > MAX_SAFE_LUNA_AMOUNT,
         ERROR_INCORRECT_DATA,
         "Invalid amount\n"
     );
 
-    memset(buffer, 0, AMOUNT_MAX_SIZE);
     for (i = 0; dVal > 0 || i < 7; i++) {
         if (dVal > 0) {
             buffer[i] = (dVal % 10) + '0';
@@ -191,39 +185,42 @@ error_t parse_amount(uint64_t amount, const char * const asset, char *out) {
         } else {
             buffer[i] = '0';
         }
-        if (i == 4) { // satoshis to nim: 1 nim = 100 000 satoshis
+        if (i == 4) { // add decimal separator: 1 nim = 100 000 luna
             i += 1;
             buffer[i] = '.';
         }
         LEDGER_ASSERT(
-            // This assertion should hold, if AMOUNT_MAX_SIZE is defined correctly and the loop works correctly.
-            i < AMOUNT_MAX_SIZE,
+            // This assertion should hold as we checked for MAX_SAFE_LUNA_AMOUNT
+            i < STRING_LENGTH_NIM_AMOUNT,
             "Overflow in parse_amount"
         );
     }
-    // reverse order
-    for (i -= 1, j = 0; i >= 0 && j < AMOUNT_MAX_SIZE-1; i--, j++) {
-        out[j] = buffer[i];
+    // Reverse order. Note: i is now the number of written characters.
+    for (j = 0; j < i; j++) {
+        out[j] = buffer[i - 1 - j];
     }
-    // strip trailing 0s
-    for (j -= 1; j > 0; j--) {
-        if (out[j] != '0') break;
+    // Strip trailing 0s. Note: j starts with i as initial value. The loop stops the latest, when the decimal separator
+    // is reached.
+    for (; j > 0; j--) {
+        if (out[j - 1] != '0') break;
     }
-    j += 1;
 
-    // strip trailing .
-    if (out[j-1] == '.') j -= 1;
+    // strip trailing decimal separator
+    if (j > 0 && out[j - 1] == '.') {
+        j -= 1;
+    }
 
-    if (asset) {
+    if (ticker) {
+        size_t ticker_length = strlen(ticker);
         RETURN_ON_ERROR(
-            j + /* added space */ 1 + strlen(asset) + /* string terminator */ 1 > STRING_LENGTH_NIM_AMOUNT,
+            j + /* space */ 1 + ticker_length + /* string terminator */ 1 > STRING_LENGTH_NIM_AMOUNT_WITH_TICKER,
             ERROR_INCORRECT_DATA,
-            "Result is longer than STRING_LENGTH_NIM_AMOUNT\n"
+            "Result is longer than STRING_LENGTH_NIM_AMOUNT_WITH_TICKER\n"
         );
-        // qualify amount
+        // Add ticker.
         out[j++] = ' ';
-        strcpy(out + j, asset);
-        out[j+strlen(asset)] = '\0';
+        strcpy(out + j, ticker);
+        out[j + ticker_length] = '\0';
     } else {
         out[j] = '\0';
     }
@@ -496,9 +493,9 @@ error_t parse_vesting_creation_data(transaction_version_t version, uint8_t *data
         helper_uint64 = (total_locked_amount / step_amount) + /* round up */ !!(total_locked_amount % step_amount);
         RETURN_ON_ERROR(
             // While this is theoretically possible in valid vesting contracts, for example for total_locked_amount ==
-            // MAX_SAFE_INTEGER and step_amount == 1, this exceeds the currently supported number of blocks of the Nimiq
-            // blockchain and would lock funds for thousands to billions of years and is therefore a nonsense config
-            // that we want to protect users from.
+            // MAX_SAFE_LUNA_AMOUNT and step_amount == 1, this exceeds the currently supported number of blocks of the
+            // Nimiq blockchain and would lock funds for thousands to billions of years and is therefore a nonsense
+            // config that we want to protect users from.
             // TODO re-evaluate this for Nimiq 2.0
             helper_uint64 > UINT32_MAX,
             ERROR_INCORRECT_DATA,

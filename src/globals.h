@@ -23,6 +23,7 @@
 
 // From Ledger SDK
 #include "cx.h"
+#include "os_math.h" // for MAX
 
 #include "constants.h"
 #include "nimiq_utils.h"
@@ -41,7 +42,7 @@ extern const internal_storage_t N_storage_real;
 
 typedef struct publicKeyContext_t {
     cx_ecfp_256_public_key_t publicKey;
-    char address[45];
+    char address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
     uint8_t signature[64];
     bool returnSignature;
 } publicKeyContext_t;
@@ -73,7 +74,7 @@ typedef struct messageSigningContext_t {
         } prepare;
         struct {
             message_display_type_t displayType;
-            char printedMessageLabel[13]; // "Message", "Message Hex" or "Message Hash" + string terminator
+            char printedMessageLabel[MAX(sizeof("Message"), MAX(sizeof("Message Hex"), sizeof("Message Hash")))];
             char printedMessage[PRINTED_MESSAGE_BUFFER_LENGTH];
             uint8_t messageHash[32];
             uint8_t prefixedMessageHash[32];

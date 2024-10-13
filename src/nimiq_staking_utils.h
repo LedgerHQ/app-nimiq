@@ -37,7 +37,7 @@ typedef struct {
             char update_staker_reactivate_all_stake[STRING_LENGTH_YES_NO]; // only used for UPDATE_STAKER; "Yes" or "No"
         } create_staker_or_update_staker;
         struct {
-            char amount[STRING_LENGTH_NIM_AMOUNT];
+            char amount[STRING_LENGTH_NIM_AMOUNT_WITH_TICKER];
         } set_active_stake_or_retire_stake;
     };
 } tx_data_staking_incoming_t;

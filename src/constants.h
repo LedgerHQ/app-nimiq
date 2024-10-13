@@ -20,11 +20,23 @@
 
 #include <stdint.h> // for uint8_t
 
-#define STRING_LENGTH_YES_NO 4 // "Yes" or "No"
-#define STRING_LENGTH_UINT8 4 // "0" to "255" (any uint8)
-#define STRING_LENGTH_UINT32 11 // "0" to "4294967295" (any uint32)
-#define STRING_LENGTH_NIM_AMOUNT 22 // "0" to "90071992547.40991 NIM" (MAX_SAFE_INTEGER Luna in NIM)
-#define STRING_LENGTH_USER_FRIENDLY_ADDRESS 45
+#include "os_math.h" // for MAX
+
+// The maximum theoretically allowed NIM amount. Equal to JavaScript's Number.MAX_SAFE_INTEGER, see Coin::MAX_SAFE_VALUE
+// in primitives/src/coin.rs in core-rs-albatross. Notably, this theoretical value is higher than the planned final
+// total supply.
+#define MAX_SAFE_LUNA_AMOUNT 9007199254740991
+
+#define STRING_LENGTH_WITH_SUFFIX(length_a, suffix) (length_a - /* string terminator of string a */ 1 + sizeof(suffix))
+
+// String lengths including the string terminator.
+// Note that the measurement strings here don't end up in the app binary, only the measurement results of sizeof.
+#define STRING_LENGTH_YES_NO MAX(sizeof("Yes"), sizeof("No"))
+#define STRING_LENGTH_UINT8 sizeof("255") // "0" to "255" (any uint8)
+#define STRING_LENGTH_UINT32 sizeof("4294967295") // "0" to "4294967295" (any uint32)
+#define STRING_LENGTH_NIM_AMOUNT sizeof("90071992547.40991") // "0" to "90071992547.40991", MAX_SAFE_LUNA_AMOUNT in NIM
+#define STRING_LENGTH_NIM_AMOUNT_WITH_TICKER STRING_LENGTH_WITH_SUFFIX(STRING_LENGTH_NIM_AMOUNT, " NIM")
+#define STRING_LENGTH_USER_FRIENDLY_ADDRESS sizeof("NQ07 0000 0000 0000 0000 0000 0000 0000 0000")
 
 #define MAX_BIP32_PATH_LENGTH 10
 

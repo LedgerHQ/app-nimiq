@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "os_math.h" // For MAX
+
 #include "constants.h"
 #include "error_macros.h"
 #include "nimiq_staking_utils.h"
@@ -43,7 +45,7 @@
 
 typedef struct {
     char recipient[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
-    char extra_data_label[9]; // "Data" or "Data Hex" + string terminator
+    char extra_data_label[MAX(sizeof("Data"), sizeof("Data Hex"))];
     char extra_data[STRING_LENGTH_NORMAL_TX_DATA_MAX];
 } tx_data_normal_or_staking_outgoing_t;
 
@@ -53,8 +55,8 @@ typedef struct {
     bool is_using_sha256;
     char redeem_address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
     char refund_address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
-    char hash_root[129]; // hash root can be up to 64 bytes; displayed as hex + string terminator requires 129 chars
-    char hash_algorithm[8]; // "BLAKE2b", "SHA-256" or "SHA-512"
+    char hash_root[64 * 2 + 1]; // hash root can be up to 64 bytes; display as hex + string terminator needs 129 chars
+    char hash_algorithm[MAX(sizeof("BLAKE2b"), MAX(sizeof("SHA-256"), sizeof("SHA-512")))];
     char hash_count[STRING_LENGTH_UINT8];
     char timeout[STRING_LENGTH_UINT32];
 } tx_data_htlc_creation_t;
@@ -64,18 +66,18 @@ typedef struct {
     bool is_multi_step;
     char owner_address[STRING_LENGTH_USER_FRIENDLY_ADDRESS];
     char start_block[STRING_LENGTH_UINT32];
-    char period[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
+    char period[STRING_LENGTH_WITH_SUFFIX(STRING_LENGTH_UINT32, " blocks")];
     char step_count[STRING_LENGTH_UINT32];
-    char step_block_count[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
+    char step_block_count[STRING_LENGTH_WITH_SUFFIX(STRING_LENGTH_UINT32, " blocks")];
     // Note: first_step_block_count, first_step_block, first_step_amount and pre_vested_amount are not all needed at the
     // same time and could therefore be moved into a union to save some memory. As however tx_data_htlc_creation_t in
     // the parsed_tx_t.type_specific union is bigger anyways, we currently don't have to do this optimization.
-    char first_step_block_count[STRING_LENGTH_UINT32 + 7]; // any 32bit unsigned int + " blocks"
+    char first_step_block_count[STRING_LENGTH_WITH_SUFFIX(STRING_LENGTH_UINT32, " blocks")];
     char first_step_block[STRING_LENGTH_UINT32];
-    char step_amount[STRING_LENGTH_NIM_AMOUNT];
-    char first_step_amount[STRING_LENGTH_NIM_AMOUNT];
-    char last_step_amount[STRING_LENGTH_NIM_AMOUNT];
-    char pre_vested_amount[STRING_LENGTH_NIM_AMOUNT];
+    char step_amount[STRING_LENGTH_NIM_AMOUNT_WITH_TICKER];
+    char first_step_amount[STRING_LENGTH_NIM_AMOUNT_WITH_TICKER];
+    char last_step_amount[STRING_LENGTH_NIM_AMOUNT_WITH_TICKER];
+    char pre_vested_amount[STRING_LENGTH_NIM_AMOUNT_WITH_TICKER];
 } tx_data_vesting_creation_t;
 
 typedef struct {
@@ -89,13 +91,22 @@ typedef struct {
     transaction_type_t transaction_type;
     transaction_label_type_t transaction_label_type;
 #ifdef HAVE_BAGL
-    // "Transaction", "Cashlink", "HTLC / Swap", "Vesting", "Create Staker", "Add Stake", "Update Staker",
-    // "Set Active Stake", "Retire Stake", "Unstake" + string terminator
-    char transaction_label[17];
+    char transaction_label[MAX(
+        sizeof("Transaction"), MAX(
+        sizeof("Cashlink"), MAX(
+        sizeof("Vesting"), MAX(
+        sizeof("HTLC / Swap"), MAX(
+        sizeof("Create Staker"), MAX(
+        sizeof("Add Stake"), MAX(
+        sizeof("Update Staker"), MAX(
+        sizeof("Set Active Stake"), MAX(
+        sizeof("Retire Stake"),
+        sizeof("Unstake")))))))))
+    )];
 #endif
-    char value[STRING_LENGTH_NIM_AMOUNT];
-    char fee[STRING_LENGTH_NIM_AMOUNT];
-    char network[12]; // "Main", "Test", "Development" or "Bounty" + string terminator
+    char value[STRING_LENGTH_NIM_AMOUNT_WITH_TICKER];
+    char fee[STRING_LENGTH_NIM_AMOUNT_WITH_TICKER];
+    char network[MAX(sizeof("Main"), MAX(sizeof("Test"), MAX(sizeof("Development"), sizeof("Bounty"))))];
 } parsed_tx_t;
 
 WARN_UNUSED_RESULT
@@ -114,7 +125,7 @@ WARN_UNUSED_RESULT
 error_t print_hex(uint8_t *data, uint16_t data_length, char *out, uint16_t out_length);
 
 WARN_UNUSED_RESULT
-error_t parse_amount(uint64_t amount, const char * const asset, char *out);
+error_t parse_amount(uint64_t amount, const char * const ticker, char out[static STRING_LENGTH_NIM_AMOUNT_WITH_TICKER]);
 
 WARN_UNUSED_RESULT
 error_t parse_network_id(transaction_version_t version, uint8_t network_id, char *out);
