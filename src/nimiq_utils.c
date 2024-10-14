@@ -26,7 +26,7 @@
 #include "base32.h"
 
 WARN_UNUSED_RESULT
-error_t iban_check(char in[32], char *check) {
+error_t iban_check(char base32[static 32], char *check) {
     unsigned int counter = 0;
     unsigned int offset = 0;
     unsigned int modulo = 0;
@@ -38,7 +38,9 @@ error_t iban_check(char in[32], char *check) {
     char partial_number[10] = { 0 };
 
     // According to IBAN standard, "NQ00" needs to be appended to the original address to calculate the checksum
-    strncpy(&address[0], &in[0], 32);
+    // Note: the input base32 is not required to be \0 terminated. We only look at the ascii chars before a potential
+    // string terminator here. Check that it's indeed valid base32 chars happens below.
+    memmove(address, base32, MIN(sizeof(address), 32));
     address[32] = 'N';
     address[33] = 'Q';
     address[34] = '0';
@@ -73,7 +75,7 @@ error_t iban_check(char in[32], char *check) {
     // Compute modulo-97 on the resulting number (do it in 32-bit pieces)
     counter = 0;
     for (unsigned int i = 0; i < 10; i++) {
-        strncpy(&partial_number[offset], &total_number[counter], 9 - offset);
+        memmove(&partial_number[offset], &total_number[counter], 9 - offset);
         counter += 9 - offset;
         for (unsigned int j = 0; j < 9; j++) {
             if (partial_number[j] != '\0') {
@@ -281,10 +283,11 @@ error_t parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal
         return ERROR_NONE;
     }
 
-    // If there is not, copy the string to be displayed
+    // If there is not, copy the string to be displayed. Note that data is not a \0 terminated string, which is why we
+    // simply copy it with memmove and add a string terminator manually.
     strcpy(out->extra_data_label, "Data");
-    strncpy(out->extra_data, (char *) data, data_length);
-    out->extra_data[data_length] = '\0'; // Make sure the string is terminated
+    memmove(out->extra_data, data, data_length);
+    out->extra_data[data_length] = '\0'; // Add string terminator.
 
     return ERROR_NONE;
 }

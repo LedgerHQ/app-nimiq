@@ -38,6 +38,14 @@
 #define VA_ARGS_IF_NOT_EMPTY_EMIT(content, ...) __VA_OPT__(content)
 #define VA_ARGS_IF_EMPTY_EMIT(content, ...) VA_ARGS##__VA_OPT__(_DROP)(content)
 
+#ifndef MIN
+/**
+ * Get the minimum of two values. This should only be used with constant expressions to avoid an expression with runtime
+ * cost or side effects running twice.
+ */
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif // MIN
+
 #ifndef MAX
 /**
  * Get the maximum of two values. This should only be used with constant expressions to avoid an expression with runtime
