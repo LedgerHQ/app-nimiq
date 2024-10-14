@@ -20,7 +20,7 @@
 
 #include <stdint.h> // for uint8_t
 
-#include "os_math.h" // for MAX
+#include "utility_macros.h" // for MAX and STRING_LENGTH_WITH_SUFFIX
 
 // The maximum theoretically allowed NIM amount. Equal to JavaScript's Number.MAX_SAFE_INTEGER, see Coin::MAX_SAFE_VALUE
 // in primitives/src/coin.rs in core-rs-albatross. Notably, this theoretical value is higher than the planned final

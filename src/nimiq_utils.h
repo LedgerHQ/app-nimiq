@@ -21,9 +21,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "os_math.h" // For MAX
-
 #include "constants.h"
+#include "utility_macros.h"
 #include "error_macros.h"
 #include "nimiq_staking_utils.h"
 

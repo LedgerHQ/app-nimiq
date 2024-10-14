@@ -21,29 +21,11 @@
 #include "ledger_assert.h" // For LEDGER_ASSERT in ON_ERROR, ERROR_TO_SW, and files that include error_macros.h
 
 #include "constants.h" // For error_t and sw_t
-
-#ifdef TEST
-#define PRINTF(...) printf(__VA_ARGS__)
-#define LEDGER_ASSERT(test, ...) assert(test)
-#define PIC(code) code
-#define TARGET_NANOS 1
-#else
-#include "os_print.h"
-#endif // TEST
+#include "utility_macros.h" // For VA_ARGS_* and DEBUG_EMIT macros
 
 #if defined(NIMIQ_DEBUG) && NIMIQ_DEBUG
 #include <string.h> // for strstr used in debug expression sanity check in ON_ERROR
-#define DEBUG_EMIT(...) __VA_ARGS__
-#else
-#define DEBUG_EMIT(...) /* drop contents */
 #endif
-
-#define VA_ARGS(...) __VA_ARGS__
-#define VA_ARGS_DROP(...) /* drop contents */
-#define VA_ARGS_PICK_FIRST(first, ...) first
-#define VA_ARGS_OMIT_FIRST(first, ...) __VA_ARGS__
-#define VA_ARGS_IF_NOT_EMPTY_EMIT(content, ...) __VA_OPT__(content)
-#define VA_ARGS_IF_EMPTY_EMIT(content, ...) VA_ARGS##__VA_OPT__(_DROP)(content)
 
 /**
  * Return from the current function with an error code and print debug messages.

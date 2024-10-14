@@ -23,9 +23,9 @@
 
 // From Ledger SDK
 #include "cx.h"
-#include "os_math.h" // for MAX
 
 #include "constants.h"
+#include "utility_macros.h"
 #include "nimiq_utils.h"
 
 /**
