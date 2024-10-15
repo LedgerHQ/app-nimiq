@@ -359,7 +359,8 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
 
     // Optionally create a signature with which the public key can be verified. We only allow signing messages up to 31
     // bytes, as we're blind signing here, and longer data could be Nimiq messages, which are 32 byte Sha256 digests, or
-    // transactions, which have varying sizes but larger than 32 bytes.
+    // transactions, which have varying sizes but larger than 32 bytes. Additionally, the message must start with the
+    // suffix "dummy-message:", to ensure even further that no meaningful data could be signed.
     uint8_t msgLength;
     uint8_t *msg = NULL;
     if (ctx.req.pk.returnSignature) {
@@ -376,6 +377,13 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
             end,
             sw,
             SW_WRONG_DATA_LENGTH
+        );
+        GOTO_ON_ERROR(
+            !memcmp(msg, "dummy-message:", sizeof("dummy-message:") - /* exclude string terminator */ 1),
+            end,
+            sw,
+            SW_INCORRECT_DATA,
+            "Verification message to sign must start with prefix \"dummy-message:\"\n"
         );
     }
 
