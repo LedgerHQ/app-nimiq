@@ -32,7 +32,7 @@ def test_get_public_key_confirm_approve(firmware, backend, navigator, default_sc
         else:
             instructions = [
                 NavInsID.USE_CASE_REVIEW_TAP,
-                NavIns(NavInsID.TOUCH, (200, 335) if firmware.device.startswith("stax") else (80, 435)), # QR button
+                NavIns(NavInsID.TOUCH, (64, 520) if firmware.device.startswith("stax") else (80, 435)), # QR button
                 NavInsID.USE_CASE_ADDRESS_CONFIRMATION_EXIT_QR,
                 NavInsID.USE_CASE_ADDRESS_CONFIRMATION_CONFIRM,
                 NavInsID.USE_CASE_STATUS_DISMISS
