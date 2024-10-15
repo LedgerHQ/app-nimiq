@@ -56,4 +56,21 @@
 
 #define STRING_LENGTH_WITH_SUFFIX(length_a, suffix) (length_a - /* string terminator of string a */ 1 + sizeof(suffix))
 
+#define STRUCT_MEMBER_SIZE(struct_type, member) (sizeof(((struct_type *) 0)->member))
+
+/**
+ * Copy data of fixed size to a destination of fixed size. This macro performs a static assertion at compile time, that
+ * the destination fits the data.
+ * In order for the static assertion to work, the sizes of source and destination have to be known at compile time, e.g.
+ * by being a buffer of fixed size or a constant string (for which sizeof includes the string terminator).
+ */
+#define COPY_FIXED_SIZE(destination, source) \
+    ({ \
+        _Static_assert( \
+            sizeof(destination) >= sizeof(source), \
+            "Copy destination too short.\n" \
+        ); \
+        memcpy(destination, source, sizeof(source)); \
+    })
+
 #endif // _NIMIQ_UTILITY_MACROS_H_

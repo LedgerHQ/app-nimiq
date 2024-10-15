@@ -543,34 +543,34 @@ void ui_transaction_signing() {
     // The complete title will be "Confirm <PARSED_TX.transaction_label>"
     switch (PARSED_TX.transaction_label_type) {
         case TRANSACTION_LABEL_TYPE_REGULAR_TRANSACTION:
-            strcpy(PARSED_TX.transaction_label, "Transaction");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Transaction");
             break;
         case TRANSACTION_LABEL_TYPE_CASHLINK:
-            strcpy(PARSED_TX.transaction_label, "Cashlink");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Cashlink");
             break;
         case TRANSACTION_LABEL_TYPE_VESTING_CREATION:
-            strcpy(PARSED_TX.transaction_label, "Vesting");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Vesting");
             break;
         case TRANSACTION_LABEL_TYPE_HTLC_CREATION:
-            strcpy(PARSED_TX.transaction_label, "HTLC / Swap");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "HTLC / Swap");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_CREATE_STAKER:
-            strcpy(PARSED_TX.transaction_label, "Create Staker");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Create Staker");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_ADD_STAKE:
-            strcpy(PARSED_TX.transaction_label, "Add Stake");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Add Stake");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_UPDATE_STAKER:
-            strcpy(PARSED_TX.transaction_label, "Update Staker");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Update Staker");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_SET_ACTIVE_STAKE:
-            strcpy(PARSED_TX.transaction_label, "Set Active Stake");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Set Active Stake");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_RETIRE_STAKE:
-            strcpy(PARSED_TX.transaction_label, "Retire Stake");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Retire Stake");
             break;
         case TRANSACTION_LABEL_TYPE_STAKING_REMOVE_STAKE:
-            strcpy(PARSED_TX.transaction_label, "Unstake");
+            COPY_FIXED_SIZE(PARSED_TX.transaction_label, "Unstake");
             break;
         default:
             // This should not happen, as the transaction parser should have set a valid transaction label type.

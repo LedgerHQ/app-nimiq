@@ -221,7 +221,7 @@ error_t parse_amount(uint64_t amount, const char * const ticker,
         );
         // Add ticker.
         out[j++] = ' ';
-        strcpy(out + j, ticker);
+        memcpy(out + j, ticker, ticker_length);
         out[j + ticker_length] = '\0';
     } else {
         out[j] = '\0';
@@ -231,15 +231,16 @@ error_t parse_amount(uint64_t amount, const char * const ticker,
 }
 
 WARN_UNUSED_RESULT
-error_t parse_network_id(transaction_version_t version, uint8_t network_id, char *out) {
+error_t parse_network_id(transaction_version_t version, uint8_t network_id,
+    char out[static STRUCT_MEMBER_SIZE(parsed_tx_t, network)]) {
     if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 42 : 24)) {
-        strcpy(out, "Main");
+        memcpy(out, "Main", sizeof("Main"));
     } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 1 : 5)) {
-        strcpy(out, "Test");
+        memcpy(out, "Test", sizeof("Test"));
     } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 2 : 6)) {
-        strcpy(out, "Development");
+        memcpy(out, "Development", sizeof("Development"));
     } else if (network_id == (version == TRANSACTION_VERSION_LEGACY ? 3 : 7)) {
-        strcpy(out, "Bounty");
+        memcpy(out, "Bounty", sizeof("Bounty"));
     } else {
         RETURN_ERROR(
             ERROR_INCORRECT_DATA,
@@ -253,8 +254,8 @@ WARN_UNUSED_RESULT
 error_t parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal_or_staking_outgoing_t *out,
     bool *out_is_cashlink) {
     // initiate with empty string / empty data
-    strcpy(out->extra_data_label, "");
-    strcpy(out->extra_data, "");
+    COPY_FIXED_SIZE(out->extra_data_label, "");
+    COPY_FIXED_SIZE(out->extra_data, "");
     *out_is_cashlink = false;
 
     // Make sure we don't get called with more data than we can fit on the extra data field.
@@ -276,7 +277,7 @@ error_t parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal
     }
     // Check if there is any non-printable ASCII characters
     if (!is_printable_ascii(data, data_length)) {
-        strcpy(out->extra_data_label, "Data Hex");
+        COPY_FIXED_SIZE(out->extra_data_label, "Data Hex");
         RETURN_ON_ERROR(
             print_hex(data, data_length, out->extra_data, sizeof(out->extra_data))
         );
@@ -285,7 +286,7 @@ error_t parse_normal_tx_data(uint8_t *data, uint16_t data_length, tx_data_normal
 
     // If there is not, copy the string to be displayed. Note that data is not a \0 terminated string, which is why we
     // simply copy it with memmove and add a string terminator manually.
-    strcpy(out->extra_data_label, "Data");
+    COPY_FIXED_SIZE(out->extra_data_label, "Data");
     memmove(out->extra_data, data, data_length);
     out->extra_data[data_length] = '\0'; // Add string terminator.
 
@@ -343,13 +344,13 @@ error_t parse_htlc_creation_data(transaction_version_t version, uint8_t *data, u
     );
     switch (hash_algorithm) {
         case HASH_ALGORITHM_BLAKE2B:
-            strcpy(out->hash_algorithm, "BLAKE2b");
+            COPY_FIXED_SIZE(out->hash_algorithm, "BLAKE2b");
             break;
         case HASH_ALGORITHM_SHA256:
-            strcpy(out->hash_algorithm, "SHA-256");
+            COPY_FIXED_SIZE(out->hash_algorithm, "SHA-256");
             break;
         case HASH_ALGORITHM_SHA512:
-            strcpy(out->hash_algorithm, "SHA-512");
+            COPY_FIXED_SIZE(out->hash_algorithm, "SHA-512");
             break;
         default:
             // Invalid hash algorithm. Notably, ARGON2d is blacklisted for HTLCs.
@@ -893,8 +894,8 @@ error_t parse_tx(transaction_version_t version, uint8_t *buffer, uint16_t buffer
         RETURN_ON_ERROR(
             print_address(recipient, out->type_specific.normal_or_staking_outgoing_tx.recipient)
         );
-        strcpy(out->type_specific.normal_or_staking_outgoing_tx.extra_data_label, "");
-        strcpy(out->type_specific.normal_or_staking_outgoing_tx.extra_data, "");
+        COPY_FIXED_SIZE(out->type_specific.normal_or_staking_outgoing_tx.extra_data_label, "");
+        COPY_FIXED_SIZE(out->type_specific.normal_or_staking_outgoing_tx.extra_data, "");
 
         return ERROR_NONE;
     }

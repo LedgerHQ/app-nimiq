@@ -71,7 +71,7 @@ error_t parse_staking_incoming_data(transaction_version_t version, uint8_t *data
                     print_address(delegation_address_pointer, out->create_staker_or_update_staker.delegation)
                 );
             } else {
-                strcpy(out->create_staker_or_update_staker.delegation, "");
+                COPY_FIXED_SIZE(out->create_staker_or_update_staker.delegation, "");
             }
             if (out->type == UPDATE_STAKER) {
                 bool reactivate_all_stake;
@@ -79,8 +79,11 @@ error_t parse_staking_incoming_data(transaction_version_t version, uint8_t *data
                     !read_bool(&data, &data_length, &reactivate_all_stake),
                     ERROR_READ
                 );
-                strcpy(out->create_staker_or_update_staker.update_staker_reactivate_all_stake,
-                    reactivate_all_stake ? "Yes" : "No");
+                if (reactivate_all_stake) {
+                    COPY_FIXED_SIZE(out->create_staker_or_update_staker.update_staker_reactivate_all_stake, "Yes");
+                } else {
+                    COPY_FIXED_SIZE(out->create_staker_or_update_staker.update_staker_reactivate_all_stake, "No");
+                }
             }
             break;
         }
@@ -156,7 +159,7 @@ error_t parse_staking_incoming_data(transaction_version_t version, uint8_t *data
         // parse_vesting_creation_data we don't block non-basic sender types for staker creation here, because contract
         // sender addresses would not be able to create a valid signature proof anyway as no signing key is known for
         // the contract address.
-        strcpy(out->validator_or_staker_address, "");
+        COPY_FIXED_SIZE(out->validator_or_staker_address, "");
     }
 
     return ERROR_NONE;
