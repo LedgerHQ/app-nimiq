@@ -134,7 +134,7 @@ void on_transaction_approved() {
         "Failed to derive private key\n"
     );
     // The private key data is also cleared at the end, but for extra paranoia, clear it as soon as possible.
-    memset(privateKeyData, 0, sizeof(privateKeyData));
+    explicit_bzero(privateKeyData, sizeof(privateKeyData));
 
     // For incoming staking transactions which are meant to include a staker signature proof in their recipient data but
     // only include the empty default proof, we replace that empty signature proof with an actually signed staker proof.
@@ -240,8 +240,8 @@ void on_transaction_approved() {
     }
 
 end:
-    memset(privateKeyData, 0, sizeof(privateKeyData));
-    memset(&privateKey, 0, sizeof(privateKey));
+    explicit_bzero(privateKeyData, sizeof(privateKeyData));
+    explicit_bzero(&privateKey, sizeof(privateKey));
     io_finalize_async_reply(G_io_apdu_buffer, data_length, sw);
 }
 
@@ -288,8 +288,8 @@ void on_message_approved() {
         SW_CRYPTOGRAPHY_FAIL,
         "Failed to derive private key or to sign\n"
     );
-    memset(privateKeyData, 0, sizeof(privateKeyData));
-    memset(&privateKey, 0, sizeof(privateKey));
+    explicit_bzero(privateKeyData, sizeof(privateKeyData));
+    explicit_bzero(&privateKey, sizeof(privateKey));
 
     io_finalize_async_reply(G_io_apdu_buffer, data_length, sw);
 }
@@ -410,7 +410,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
         "Failed to derive private key\n"
     );
     // The private key data is also cleared at the end, but for extra paranoia, clear it as soon as possible.
-    memset(privateKeyData, 0, sizeof(privateKeyData));
+    explicit_bzero(privateKeyData, sizeof(privateKeyData));
 
     GOTO_ON_ERROR(
         cx_ecfp_generate_pair_no_throw(
@@ -441,7 +441,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
         );
     }
     // The private key is also cleared at the end, but for extra paranoia, clear it as soon as possible.
-    memset(&privateKey, 0, sizeof(privateKey));
+    explicit_bzero(&privateKey, sizeof(privateKey));
 
     if (p2 & P2_CONFIRM) {
         // Async request, in which we display the address and ask the user to confirm.
@@ -475,8 +475,8 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
     }
 
 end:
-    memset(privateKeyData, 0, sizeof(privateKeyData));
-    memset(&privateKey, 0, sizeof(privateKey));
+    explicit_bzero(privateKeyData, sizeof(privateKeyData));
+    explicit_bzero(&privateKey, sizeof(privateKey));
     return sw;
 }
 
