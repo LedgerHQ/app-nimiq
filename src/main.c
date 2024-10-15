@@ -361,7 +361,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
     // bytes, as we're blind signing here, and longer data could be Nimiq messages, which are 32 byte Sha256 digests, or
     // transactions, which have varying sizes but larger than 32 bytes.
     uint8_t msgLength;
-    uint8_t *msg;
+    uint8_t *msg = NULL;
     if (ctx.req.pk.returnSignature) {
         GOTO_ON_ERROR(
             data_length > 31,
@@ -424,7 +424,7 @@ sw_t handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t *data_buffer, uint16_
         SW_CRYPTOGRAPHY_FAIL,
         "Failed to generate public key\n"
     );
-    if (ctx.req.pk.returnSignature) {
+    if (ctx.req.pk.returnSignature && msg) {
         GOTO_ON_ERROR(
             cx_eddsa_sign_no_throw(
                 /* private key */ &privateKey,
