@@ -30,9 +30,9 @@ include $(BOLOS_SDK)/Makefile.defines
 APPNAME = Nimiq
 
 # Application version
-APPVERSION_M = 1
-APPVERSION_N = 4
-APPVERSION_P = 6
+APPVERSION_M = 2
+APPVERSION_N = 0
+APPVERSION_P = 0
 APPVERSION = "$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)"
 
 # Setting to allow building variant applications. For now, there are no variants, only the main Nimiq app.
