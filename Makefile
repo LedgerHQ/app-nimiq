@@ -67,7 +67,17 @@ DISABLE_STANDARD_APP_FILES = 1
 #   control, also Colors > Dither might be used.
 # - Set the Layer > Layer Boundary Size to the intended size of the final image, centering the content. Then Image > Fit
 #   Canvas to Layers.
-# - Export the image as gif, which should be saved with the desired bits per pixel, if following these steps.
+# - Save the icon as xcf with the indexed color map which can be used for future changes to the image.
+# - For binary black/white icons: export the icon with indexed color mode as gif, which will save as 1bit-per-pixel.
+#   For grayscale icons: The guidelines_enforcer.yml workflow expects grayscale images to have 8bit-per-pixel depth
+#   (even though the glyph build task seems to be compatible with lower bit-per-pixel), therefore change the Image >
+#   Mode to Grayscale and then export as gif. Do not overwrite the xcf file, to keep it in indexed mode.
+#   For some reason, for glyphs/app_nimiq_64px.gif, but not for the other icons, this made the glyph build task complain
+#   that the image is not indexed. So not quite sure yet, what the proper procedure would be here. Also tried, re-export
+#   of app_nimiq_64px.gif via https://www.photopea.com/, which exports with a color map with 256 entries, excess entries
+#   simply being filled up as black, but that still had 4bpp depth the enforcer complained about. Switching to Grayscale
+#   and then back to an indexed palette with 32 shades of gray seems to have done the trick.
+#   Note that for checking for the bit depth, ImageMagick's identify can be used: identify -verbose /path/to/icon.gif
 ICON_NANOS = icons/app_nimiq_16px.gif
 ICON_NANOX = icons/app_nimiq_14px.gif
 ICON_NANOSP = icons/app_nimiq_14px.gif
