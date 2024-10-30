@@ -1,4 +1,10 @@
+# See https://github.com/LedgerHQ/ledgered/blob/master/doc/manifest.md for format of this file
+
 [app]
 build_directory = "./"
 sdk = "C"
-devices = ["nanos", "nanox", "nanos+"]
+devices = ["nanos", "nanox", "nanos+", "stax", "flex"]
+
+[tests]
+# unit_directory = "./unit-tests/" # not currently enabled as the tests are outdated
+pytest_directory = "./tests/"
