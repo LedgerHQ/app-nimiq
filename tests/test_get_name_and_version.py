@@ -26,4 +26,4 @@ def test_get_app_and_version(backend):
     app_name, version = app_name_raw.decode("ascii"), version_raw.decode("ascii")
 
     assert app_name == "Nimiq"
-    assert version == "2.0.0"
+    assert version == "2.0.1"

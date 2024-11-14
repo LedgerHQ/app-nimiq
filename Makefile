@@ -32,7 +32,7 @@ APPNAME = Nimiq
 # Application version
 APPVERSION_M = 2
 APPVERSION_N = 0
-APPVERSION_P = 0
+APPVERSION_P = 1
 APPVERSION = "$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)"
 
 # Setting to allow building variant applications. For now, there are no variants, only the main Nimiq app.
