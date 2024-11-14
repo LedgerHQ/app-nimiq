@@ -141,15 +141,11 @@ static void review_entries_launch_use_case_review(
     bool use_small_font
 ) {
     // The tagValueList gets copied in nbgl_useCaseReview, therefore it's sufficient to initialize it only in temporary
-    // memory. We use G_io_apdu buffer as temporary buffer, to save some stack space, and check that it can fit the data
-    // with a compile time assertion. Note that the entries are not copied, and we therefore have them in global memory.
-    _Static_assert(
-        sizeof(nbgl_contentTagValueList_t) <= sizeof(G_io_apdu_buffer),
-        "G_io_apdu_buffer can't fit review list\n"
-    );
-    nbgl_contentTagValueList_t *temporary_tag_value_list_pointer = (nbgl_contentTagValueList_t*) G_io_apdu_buffer;
+    // memory. We use G_io_apdu buffer as temporary buffer, to save some stack space. Note that the review entries are
+    // not copied, and we therefore have them in global memory.
+    DECLARE_TEMPORARY_G_IO_APDU_BUFFER_POINTER(nbgl_contentTagValueList_t *, temporary_tag_value_list_pointer);
     // Initialize list with zeroes, including .nbMaxLinesForValue (no limit of lines to display).
-    memset(temporary_tag_value_list_pointer, 0, sizeof(nbgl_contentTagValueList_t));
+    memset(temporary_tag_value_list_pointer, 0, sizeof(*temporary_tag_value_list_pointer));
     temporary_tag_value_list_pointer->wrapping = true; // Prefer wrapping on spaces, e.g. for nicer address formatting.
     temporary_tag_value_list_pointer->smallCaseForValue = use_small_font;
     temporary_tag_value_list_pointer->pairs = review_entries.entries;
@@ -170,7 +166,7 @@ static void review_entries_launch_use_case_review(
     // static variable in nbgl_use_case.c and there's also no non-static method that exposes pointers to it. Instead, we
     // reset the temporary buffer, to make it immediately noticeable via Ragger end-to-end tests if the data was not
     // copied. Use explicit_bzero instead of memset to avoid this being optimized away.
-    explicit_bzero(temporary_tag_value_list_pointer, sizeof(nbgl_contentTagValueList_t));
+    explicit_bzero(temporary_tag_value_list_pointer, sizeof(*temporary_tag_value_list_pointer));
 }
 
 //////////////////////////////////////////////////////////////////////

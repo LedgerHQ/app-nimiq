@@ -179,12 +179,8 @@ void on_transaction_approved() {
         created_staker_signature = true;
 
         // Similarly, overwrite the public key in the signature proof with the ledger account public key as staker, with
-        // G_io_apdu_buffer as temporary buffer again. Check with a compile time assertion that it can fit the temp data
-        _Static_assert(
-            sizeof(cx_ecfp_256_public_key_t) <= sizeof(G_io_apdu_buffer),
-            "G_io_apdu_buffer does not fit public key\n"
-        );
-        cx_ecfp_256_public_key_t *temporary_public_key_pointer = (cx_ecfp_256_public_key_t*) G_io_apdu_buffer;
+        // G_io_apdu_buffer as temporary buffer again.
+        DECLARE_TEMPORARY_G_IO_APDU_BUFFER_POINTER(cx_ecfp_256_public_key_t *, temporary_public_key_pointer);
         GOTO_ON_ERROR(
             cx_ecfp_generate_pair_no_throw(
                 /* curve */ CX_CURVE_Ed25519,
