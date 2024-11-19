@@ -56,7 +56,7 @@
 
 #define STRING_LENGTH_WITH_SUFFIX(length_a, suffix) (length_a - /* string terminator of string a */ 1 + sizeof(suffix))
 
-#define STRUCT_MEMBER_SIZE(struct_type, member) (sizeof(((struct_type *) 0)->member))
+#define STRUCT_MEMBER_SIZE(struct_type, member) (sizeof(((struct_type *) NULL)->member))
 
 /**
  * Copy data of fixed size to a destination of fixed size. This macro performs a static assertion at compile time, that
@@ -72,5 +72,40 @@
         ); \
         memcpy(destination, source, sizeof(source)); \
     })
+
+#define POINTER_SIZE (sizeof(void *))
+/**
+ * Get the offset of a pointer from 32bit based memory alignment. Memory access of pointers to data types larger than
+ * one byte need to be aligned to 32bit words / POINTER_SIZE (or 16bit for shorts, which we don't handle separately here
+ * and always use 32bit alignment), as required by Ledger Nano S's hardware, and for other devices by the compiler flags
+ * (presumably, as other devices do in fact support non-aligned memory access, however without memory alignment, the app
+ * froze on the unaligned memset in review_entries_launch_use_case_review since using the SDK's Makefile.standard_app
+ * for building as of 5542f4b6, but not before that change. I did not further investigate, which exact flag introduced
+ * the issue, or whether maybe the accessed pointer was 32bit aligned before that change by coincidence). Note that the
+ * speculos emulator does not enforce any memory alignment, which is why related issues do not show there.
+ * In any case, it's a good idea to conform to memory alignment.
+ */
+#define POINTER_MEMORY_ALIGNMENT_OFFSET(pointer) (((uintptr_t) pointer) % POINTER_SIZE)
+
+/**
+ * Declare a pointer of given type within G_io_apdu_buffer for temporary use, while G_io_apdu_buffer is not otherwise
+ * used or accessed. The pointer is ensured to be memory aligned, see POINTER_MEMORY_ALIGNMENT_OFFSET, and its type is
+ * checked to fit G_io_apdu_buffer.
+ */
+#define DECLARE_TEMPORARY_G_IO_APDU_BUFFER_POINTER(pointer_type, variable_name) \
+    _Static_assert( \
+        /* The memory alignment offset can not be statically computed at compile time, therefore we assume for the */ \
+        /* static assertion that the largest padding POINTER_SIZE - 1 has to be applied. */ \
+        sizeof(*((pointer_type) NULL)) <= sizeof(G_io_apdu_buffer) - (POINTER_SIZE - 1), \
+        "Pointer type does not fit G_io_apdu_buffer\n" \
+    ); \
+    pointer_type variable_name = (pointer_type) ( \
+        G_io_apdu_buffer + \
+        ( \
+            POINTER_MEMORY_ALIGNMENT_OFFSET(G_io_apdu_buffer) \
+                ? POINTER_SIZE - POINTER_MEMORY_ALIGNMENT_OFFSET(G_io_apdu_buffer) \
+                : 0 \
+        ) \
+    );
 
 #endif // _NIMIQ_UTILITY_MACROS_H_
