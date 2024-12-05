@@ -23,7 +23,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "constants.h"
+#include "error_macros.h"
 
-int base32_encode(const uint8_t *data, int length, char *result, int bufSize);
+WARN_UNUSED_RESULT
+error_t base32_encode(const uint8_t *data, int length, char *result, int buf_size);
 
 #endif

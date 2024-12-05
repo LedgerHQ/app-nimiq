@@ -19,20 +19,22 @@
 
 #include "base32.h"
 
-int base32_encode(const uint8_t *data, int length, char *result, int bufSize) {
+WARN_UNUSED_RESULT
+error_t base32_encode(const uint8_t *data, int length, char *result, int buf_size) {
     int count = 0;
     int quantum = 8;
 
-    if (length < 0 || length > (1 << 28)) {
-        return -1;
-    }
+    RETURN_ON_ERROR(
+        length < 0 || length > (1 << 28),
+        ERROR_INVALID_LENGTH
+    );
 
     if (length > 0) {
         int buffer = data[0];
         int next = 1;
         int bitsLeft = 8;
 
-        while (count < bufSize && (bitsLeft > 0 || next < length)) {
+        while (count < buf_size && (bitsLeft > 0 || next < length)) {
             if (bitsLeft < 5) {
                 if (next < length) {
                     buffer <<= 8;
@@ -58,7 +60,7 @@ int base32_encode(const uint8_t *data, int length, char *result, int bufSize) {
 
         // If the number of encoded characters does not make a full quantum, insert padding
         if (quantum != 8) {
-            while (quantum > 0 && count < bufSize) {
+            while (quantum > 0 && count < buf_size) {
                 result[count++] = '=';
                 quantum--;
             }
@@ -66,10 +68,11 @@ int base32_encode(const uint8_t *data, int length, char *result, int bufSize) {
     }
 
     // Finally check if we exceeded buffer size.
-    if (count < bufSize) {
-        result[count] = '\000';
-        return count;
-    } else {
-        return -1;
-    }
+    RETURN_ON_ERROR(
+        count >= buf_size,
+        ERROR_INVALID_LENGTH
+    );
+
+    result[count] = '\000';
+    return ERROR_NONE;
 }
