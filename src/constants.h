@@ -139,6 +139,10 @@ typedef enum {
     MESSAGE_DISPLAY_TYPE_HASH,
 } message_display_type_t;
 
+#ifdef ERROR_NONE
+#undef ERROR_NONE
+#endif // ERROR_NONE
+
 /**
  * Error codes for methods that do not operate on the APDU protocol. They are meant to keep these methods somewhat
  * independent of Ledger specific code.
@@ -147,6 +151,7 @@ typedef enum: uint8_t {
     /**
      * No error occurred. All good.
      */
+	
     ERROR_NONE = 0x0,
     /**
      * Not further specified error of value 1/true, which is the automatic result of logical expressions, or variables
