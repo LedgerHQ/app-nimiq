@@ -18,6 +18,7 @@
 #ifdef HAVE_NBGL
 
 // From Ledger SDK
+#include "os_io_seproxyhal.h"
 #include "ux.h"
 #include "nbgl_use_case.h"
 
