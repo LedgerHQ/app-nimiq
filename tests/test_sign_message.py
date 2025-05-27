@@ -1,4 +1,5 @@
 import pytest
+from ledgered.devices import Device
 from ragger.error import ExceptionRAPDU
 from ragger.navigator import NavInsID
 
@@ -40,11 +41,11 @@ APDUS = {
     ),
 }
 
-def test_sign_message_approve(firmware, backend, navigator, default_screenshot_path, test_name):
+def test_sign_message_approve(device: Device, backend, navigator, default_screenshot_path, test_name):
     for name, apdus in APDUS.items():
         screenshot_folder = test_name + f"_{name}"
         with apdus.exchange_async(backend):
-            if firmware.device.startswith("nano"):
+            if device.is_nano:
                 # Manually skip the first page which also contains the word "Sign"
                 navigator.navigate([NavInsID.RIGHT_CLICK])
                 navigator.navigate_until_text_and_compare(
@@ -65,11 +66,11 @@ def test_sign_message_approve(firmware, backend, navigator, default_screenshot_p
                 )
         apdus.check_async_response(backend)
 
-def test_sign_message_reject(firmware, backend, navigator, default_screenshot_path, test_name):
+def test_sign_message_reject(device: Device, backend, navigator, default_screenshot_path, test_name):
     # As the reject flow is the same for all different message types, and is handled mostly by the SDK, we test it only
     # for one of the messages, the basic ascii message.
     apdus = APDUS["ascii"]
-    if firmware.device.startswith("nano"):
+    if device.is_nano:
         with pytest.raises(ExceptionRAPDU) as e, apdus.exchange_async(backend):
             navigator.navigate_until_text_and_compare(
                 NavInsID.RIGHT_CLICK,

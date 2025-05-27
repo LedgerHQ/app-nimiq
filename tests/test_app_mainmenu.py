@@ -1,8 +1,9 @@
+from ledgered.devices import Device
 from ragger.navigator import NavInsID, NavIns
 
-def test_app_mainmenu(firmware, navigator, test_name, default_screenshot_path):
+def test_app_mainmenu(device: Device, navigator, test_name, default_screenshot_path):
     # Navigate in the main menu
-    if firmware.is_nano:
+    if device.is_nano:
         instructions = [
             NavInsID.RIGHT_CLICK,
             NavInsID.RIGHT_CLICK,
