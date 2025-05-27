@@ -1,4 +1,5 @@
 import pytest
+from ledgered.devices import Device
 from ragger.error import ExceptionRAPDU
 from ragger.navigator import NavInsID
 
@@ -262,12 +263,12 @@ APDUS = {
     ),
 }
 
-def test_sign_transaction_approve(firmware, backend, navigator, default_screenshot_path, test_name):
+def test_sign_transaction_approve(device: Device, backend, navigator, default_screenshot_path, test_name):
     for name, apdus in APDUS.items():
         name = name.removesuffix("_legacy") # UI / screenshots are the same for legacy transactions
         screenshot_folder = test_name + f"_{name}"
         with apdus.exchange_async(backend):
-            if firmware.device.startswith("nano"):
+            if device.is_nano:
                 navigator.navigate_until_text_and_compare(
                     NavInsID.RIGHT_CLICK,
                     [NavInsID.BOTH_CLICK],
@@ -285,11 +286,11 @@ def test_sign_transaction_approve(firmware, backend, navigator, default_screensh
                 )
         apdus.check_async_response(backend)
 
-def test_sign_transaction_reject(firmware, backend, navigator, default_screenshot_path, test_name):
+def test_sign_transaction_reject(device: Device, backend, navigator, default_screenshot_path, test_name):
     # As the reject flow is the same for all different transaction types, and is handled mostly by the SDK, we test it
     # only for one of the transactions, the basic transaction.
     apdus = APDUS["basic"]
-    if firmware.device.startswith("nano"):
+    if device.is_nano:
         with pytest.raises(ExceptionRAPDU) as e, apdus.exchange_async(backend):
             navigator.navigate_until_text_and_compare(
                 NavInsID.RIGHT_CLICK,
