@@ -1,4 +1,5 @@
 import pytest
+from ledgered.devices import Device, DeviceType
 from ragger.error import ExceptionRAPDU
 from ragger.navigator import NavInsID, NavIns
 
@@ -19,9 +20,9 @@ APDUS = {
 def test_get_public_key_no_confirm(backend):
     APDUS["no_confirm"].exchange(backend)
 
-def test_get_public_key_confirm_approve(firmware, backend, navigator, default_screenshot_path, test_name):
+def test_get_public_key_confirm_approve(device: Device, backend, navigator, default_screenshot_path, test_name):
     with APDUS["confirm"].exchange_async(backend):
-        if firmware.device.startswith("nano"):
+        if device.is_nano:
             navigator.navigate_until_text_and_compare(
                 NavInsID.RIGHT_CLICK,
                 [NavInsID.BOTH_CLICK],
@@ -32,7 +33,7 @@ def test_get_public_key_confirm_approve(firmware, backend, navigator, default_sc
         else:
             instructions = [
                 NavInsID.USE_CASE_REVIEW_TAP,
-                NavIns(NavInsID.TOUCH, (64, 520) if firmware.device.startswith("stax") else (80, 435)), # QR button
+                NavIns(NavInsID.TOUCH, (64, 520) if device.type == DeviceType.STAX else (80, 435)), # QR button
                 NavInsID.USE_CASE_ADDRESS_CONFIRMATION_EXIT_QR,
                 NavInsID.USE_CASE_ADDRESS_CONFIRMATION_CONFIRM,
                 NavInsID.USE_CASE_STATUS_DISMISS
@@ -44,8 +45,8 @@ def test_get_public_key_confirm_approve(firmware, backend, navigator, default_sc
             )
     APDUS["confirm"].check_async_response(backend)
 
-def test_get_public_key_confirm_reject(firmware, backend, navigator, default_screenshot_path, test_name):
-    if firmware.device.startswith("nano"):
+def test_get_public_key_confirm_reject(device: Device, backend, navigator, default_screenshot_path, test_name):
+    if device.is_nano:
         with pytest.raises(ExceptionRAPDU) as e, APDUS["confirm"].exchange_async(backend):
             navigator.navigate_until_text_and_compare(
                 NavInsID.RIGHT_CLICK,
