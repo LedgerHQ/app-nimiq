@@ -1,4 +1,5 @@
-from utils import pop_sized_buf_from_buffer, pop_size_prefixed_buf_from_buf
+from .utils import pop_sized_buf_from_buffer, pop_size_prefixed_buf_from_buf
+from .utils import verify_version, verify_name
 
 def test_get_app_and_version(backend):
     # Note that this is a request handled by BOLOS, see io_process_default_apdus in ledger-secure-sdk.
@@ -25,5 +26,5 @@ def test_get_app_and_version(backend):
 
     app_name, version = app_name_raw.decode("ascii"), version_raw.decode("ascii")
 
-    assert app_name == "Nimiq"
-    assert version == "2.1.0"
+    verify_name(app_name)
+    verify_version(version)

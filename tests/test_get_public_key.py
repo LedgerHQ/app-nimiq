@@ -3,8 +3,8 @@ from ledgered.devices import Device, DeviceType
 from ragger.error import ExceptionRAPDU
 from ragger.navigator import NavInsID, NavIns
 
-from raw_apdu_exchange import RawApduExchange
-from errors import Errors
+from .raw_apdu_exchange import RawApduExchange
+from .errors import Errors
 
 APDUS = {
     "no_confirm": RawApduExchange(
