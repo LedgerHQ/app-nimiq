@@ -3,8 +3,8 @@ from ledgered.devices import Device
 from ragger.error import ExceptionRAPDU
 from ragger.navigator import NavInsID
 
-from raw_apdu_exchange import RawApduExchange
-from errors import Errors
+from .raw_apdu_exchange import RawApduExchange
+from .errors import Errors
 
 APDUS = {
     # Message (ascii): 'Hello world.'

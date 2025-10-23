@@ -31,8 +31,8 @@ APPNAME = Nimiq
 
 # Application version
 APPVERSION_M = 2
-APPVERSION_N = 0
-APPVERSION_P = 2
+APPVERSION_N = 1
+APPVERSION_P = 0
 APPVERSION = "$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)"
 
 # Setting to allow building variant applications. For now, there are no variants, only the main Nimiq app.
@@ -83,6 +83,7 @@ ICON_NANOX = icons/app_nimiq_14px.gif
 ICON_NANOSP = icons/app_nimiq_14px.gif
 ICON_STAX = icons/app_nimiq_32px.gif
 ICON_FLEX = icons/app_nimiq_40px.gif
+ICON_APEX_P = icons/app_nimiq_32px_bw.png
 
 
 ##############################
