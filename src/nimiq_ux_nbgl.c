@@ -54,7 +54,7 @@ static const nbgl_contentInfoList_t ABOUT_MENU_INFO_LIST = {
 void ui_menu_main() {
     nbgl_useCaseHomeAndSettings(
         /* appName */ APPNAME,
-        /* appIcon */ &C_app_nimiq_64px,
+        /* appIcon */ &ICON_APP_HOME,
         /* tagline */ NULL, // use default description
         /* initSettingPage */ INIT_HOME_PAGE, // start at the first page
         /* settingContents */ NULL, // no settings
@@ -87,7 +87,7 @@ void ui_public_key() {
     nbgl_useCaseAddressReview(
         /* address */ ctx.req.pk.address,
         /* additionalTagValueList */ NULL, // no additional infos
-        /* icon */ &C_app_nimiq_64px,
+        /* icon */ &ICON_APP_NIMIQ,
         /* reviewTitle */ "Verify NIM address",
         /* reviewSubtitle */ "After copying and pasting, or scanning the address, make sure that it matches what's "
             "shown on your Ledger.",
@@ -335,7 +335,7 @@ void ui_transaction_signing() {
 
     review_entries_launch_use_case_review(
         /* operation_type */ TYPE_TRANSACTION,
-        /* icon */ &C_app_nimiq_64px,
+        /* icon */ &ICON_APP_NIMIQ,
         /* review_title */ review_title,
         /* review_subtitle */ review_subtitle,
         /* finish_title */ finish_title,
@@ -395,7 +395,7 @@ void ui_message_signing(message_display_type_t messageDisplayType, bool startAtM
 
     review_entries_launch_use_case_review(
         /* operation_type */ TYPE_MESSAGE,
-        /* icon */ &C_Review_64px, // provided by ledger-secure-sdk
+        /* icon */ &ICON_APP_REVIEW, // provided by ledger-secure-sdk
         /* review_title */ "Review message",
         /* review_subtitle */ review_subtitle,
         /* finish_title */ "Sign message",

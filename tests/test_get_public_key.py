@@ -31,9 +31,15 @@ def test_get_public_key_confirm_approve(device: Device, backend, navigator, defa
                 test_name,
             )
         else:
+            if device.type == DeviceType.STAX:
+                qr_position = (64, 520)
+            elif device.type == DeviceType.FLEX:
+                qr_position = (80, 435)
+            elif device.type == DeviceType.APEX_P:
+                qr_position = (45, 289)
             instructions = [
                 NavInsID.USE_CASE_REVIEW_TAP,
-                NavIns(NavInsID.TOUCH, (64, 520) if device.type == DeviceType.STAX else (80, 435)), # QR button
+                NavIns(NavInsID.TOUCH, qr_position), # QR button
                 NavInsID.USE_CASE_ADDRESS_CONFIRMATION_EXIT_QR,
                 NavInsID.USE_CASE_ADDRESS_CONFIRMATION_CONFIRM,
                 NavInsID.USE_CASE_STATUS_DISMISS

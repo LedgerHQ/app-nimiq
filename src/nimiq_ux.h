@@ -22,6 +22,16 @@
 
 #include "constants.h"
 
+#if defined(TARGET_STAX) || defined(TARGET_FLEX)
+#define ICON_APP_NIMIQ  C_app_nimiq_64px
+#define ICON_APP_HOME   ICON_APP_NIMIQ
+#define ICON_APP_REVIEW LARGE_REVIEW_ICON
+#elif defined(TARGET_APEX_P)
+#define ICON_APP_NIMIQ  C_app_nimiq_48px
+#define ICON_APP_HOME   ICON_APP_NIMIQ
+#define ICON_APP_REVIEW LARGE_REVIEW_ICON
+#endif
+
 void ui_menu_main();
 
 void ui_public_key();
